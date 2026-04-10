@@ -225,6 +225,19 @@ export function hygiene(some: NodeJS.ReadWriteStream | string[] | undefined, run
 	);
 }
 
+function isGitSubmoduleIndexEntry(repositoryPath: string, relativePath: string): boolean {
+	try {
+		const staged = cp.execSync(`git ls-files --stage -- "${relativePath}"`, {
+			cwd: repositoryPath,
+			encoding: 'utf8',
+		});
+		const line = staged.trim().split(/\r?\n/).find((l) => l.length > 0);
+		return !!line && line.startsWith('160000');
+	} catch {
+		return false;
+	}
+}
+
 function createGitIndexVinyls(paths: string[]): Promise<VinylFile[]> {
 	const repositoryPath = process.cwd();
 
@@ -238,6 +251,11 @@ function createGitIndexVinyls(paths: string[]): Promise<VinylFile[]> {
 					return c(null);
 				} else if (err) {
 					return e(err);
+				}
+
+				// Submodule gitlinks cannot be read with `git show :path`
+				if (isGitSubmoduleIndexEntry(repositoryPath, relativePath)) {
+					return c(null);
 				}
 
 				cp.exec(

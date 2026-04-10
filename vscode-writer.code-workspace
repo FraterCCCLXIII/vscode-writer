@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"name": "vscode-writer",
+			"path": "."
+		},
+		{
+			"name": "Harper",
+			"path": "harper"
+		}
+	],
+	"settings": {},
+	"extensions": {
+		"recommendations": [
+			"elijah-potter.harper"
+		]
+	}
+}
