@@ -7,6 +7,7 @@ import * as l10n from '@vscode/l10n';
 import { Raw } from '@vscode/prompt-tsx';
 import type { ChatErrorDetails, MappedEditsResponseStream, NotebookCell, NotebookDocument, Uri } from 'vscode';
 import { IAuthenticationService } from '../../../../platform/authentication/common/authentication';
+import { copilotPlanForErrorMessages } from '../../../byok/common/copilotPlanForErrors';
 import { FetchStreamSource, IResponsePart } from '../../../../platform/chat/common/chatMLFetcher';
 import { ChatFetchResponseType, ChatLocation, ChatResponse, getErrorDetailsFromChatFetchError, getFilteredMessage } from '../../../../platform/chat/common/commonTypes';
 import { getTextPart, toTextPart } from '../../../../platform/chat/common/globalStringUtils';
@@ -391,7 +392,7 @@ export class CodeMapper {
 				return undefined;
 			}
 			const outageStatus = await this.octoKitService.getGitHubOutageStatus();
-			const errorDetails = getErrorDetailsFromChatFetchError(fetchResult, (await this.authenticationService.getCopilotToken()).copilotPlan, outageStatus);
+			const errorDetails = getErrorDetailsFromChatFetchError(fetchResult, await copilotPlanForErrorMessages(this.authenticationService), outageStatus);
 			result = createOutcome([{ label: errorDetails.message, message: `request ${fetchResult.type}`, severity: 'error' }], errorDetails);
 		}
 		if (result.annotations.length || result.errorDetails) {

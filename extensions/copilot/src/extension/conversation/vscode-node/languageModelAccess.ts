@@ -38,6 +38,8 @@ import { Disposable, MutableDisposable } from '../../../util/vs/base/common/life
 import { isBoolean, isDefined, isNumber, isString, isStringArray } from '../../../util/vs/base/common/types';
 import { IInstantiationService } from '../../../util/vs/platform/instantiation/common/instantiation';
 import { ChatLocation as ApiChatLocation, ExtensionMode } from '../../../vscodeTypes';
+import { copilotPlanForErrorMessages } from '../../byok/common/copilotPlanForErrors';
+import { isStandaloneByokChatFromProduct } from '../../byok/common/standaloneByokProduct';
 import type { LMResponsePart } from '../../byok/common/byokProvider';
 import { IExtensionContribution } from '../../common/contributions';
 import { PromptRenderer } from '../../prompts/node/base/promptRenderer';
@@ -174,6 +176,9 @@ export class LanguageModelAccess extends Disposable implements IExtensionContrib
 	private _lmWrapper: CopilotLanguageModelWrapper;
 	private _promptBaseCountCache: LanguageModelAccessPromptBaseCountCache;
 
+	/** When Auto is backed by a third-party LM (no CAPI AutoChatEndpoint), we add a synthetic "auto" picker row. */
+	private _thirdPartyAutoBackingModelId: string | undefined;
+
 	constructor(
 		@ILogService private readonly _logService: ILogService,
 		@IInstantiationService private readonly _instantiationService: IInstantiationService,
@@ -218,7 +223,7 @@ export class LanguageModelAccess extends Disposable implements IExtensionContrib
 		};
 		this._register(vscode.lm.registerLanguageModelChatProvider('copilot', provider));
 		this._register(this._authenticationService.onDidAuthenticationChange(() => {
-			if (!this._authenticationService.anyGitHubSession) {
+			if (!this._authenticationService.anyGitHubSession && !isStandaloneByokChatFromProduct()) {
 				this._currentModels = [];
 			}
 			// Auth changed which means models could've changed. Fire the event
@@ -238,11 +243,19 @@ export class LanguageModelAccess extends Disposable implements IExtensionContrib
 			return this._currentModels;
 		}
 
+		this._thirdPartyAutoBackingModelId = undefined;
+
 		const models: vscode.LanguageModelChatInformation[] = [];
 		const allEndpoints = await this._endpointProvider.getAllChatEndpoints();
 		const chatEndpoints = allEndpoints.filter(e => e.showInModelPicker || e.model === 'gpt-4o-mini');
 		const autoEndpoint = await this._automodeService.resolveAutoModeEndpoint(undefined, allEndpoints);
-		chatEndpoints.push(autoEndpoint);
+		const capiStyleAuto = autoEndpoint instanceof AutoChatEndpoint;
+		if (capiStyleAuto) {
+			chatEndpoints.push(autoEndpoint);
+		} else {
+			/** Third-party Auto: keep the concrete model in the list once; add a synthetic "auto" row below. */
+			this._thirdPartyAutoBackingModelId = autoEndpoint.model;
+		}
 		let defaultChatEndpoint: IChatEndpoint;
 		const defaultExpModel = this._expService.getTreatmentVariable<string>('chat.defaultLanguageModel')?.replace('copilot/', '');
 		if (this._authenticationService.copilotToken?.isNoAuthUser || !defaultExpModel || defaultExpModel === AutoChatEndpoint.pseudoModelId) {
@@ -280,6 +293,8 @@ export class LanguageModelAccess extends Disposable implements IExtensionContrib
 			let modelCategory: { label: string; order: number } | undefined;
 			if (endpoint instanceof AutoChatEndpoint) {
 				modelCategory = { label: '', order: Number.MIN_SAFE_INTEGER };
+			} else if (endpoint.isExtensionContributed) {
+				modelCategory = { label: vscode.l10n.t('Third-party models'), order: 3 };
 			} else if (endpoint.isPremium === undefined || this._authenticationService.copilotToken?.isFreeUser) {
 				modelCategory = { label: vscode.l10n.t("Copilot Models"), order: 0 };
 			} else if (endpoint.isPremium) {
@@ -318,7 +333,9 @@ export class LanguageModelAccess extends Disposable implements IExtensionContrib
 			}
 
 			const session = this._authenticationService.anyGitHubSession;
-			const isDefault = endpoint === defaultChatEndpoint;
+			const isDefault = (!capiStyleAuto && this._thirdPartyAutoBackingModelId)
+				? false
+				: endpoint === defaultChatEndpoint;
 
 			const model: vscode.LanguageModelChatInformation = {
 				id: endpoint instanceof AutoChatEndpoint ? AutoChatEndpoint.pseudoModelId : endpoint.model,
@@ -362,6 +379,31 @@ export class LanguageModelAccess extends Disposable implements IExtensionContrib
 			}
 		}
 
+		if (!capiStyleAuto && this._thirdPartyAutoBackingModelId) {
+			const template = models.find(m => m.id === this._thirdPartyAutoBackingModelId) ?? models[0];
+			if (template) {
+				models.push({
+					...template,
+					id: AutoChatEndpoint.pseudoModelId,
+					name: 'Auto',
+					family: template.family,
+					multiplier: undefined,
+					multiplierNumeric: undefined,
+					detail: undefined,
+					category: { label: '', order: Number.MIN_SAFE_INTEGER },
+					tooltip: vscode.l10n.t('Auto picks a third-party model (BYOK or local), preferring tool-capable and vision models when your request needs them.'),
+					isDefault: {
+						[ApiChatLocation.Panel]: true,
+						[ApiChatLocation.Terminal]: true,
+						[ApiChatLocation.Notebook]: true,
+						[ApiChatLocation.Editor]: true,
+					},
+					isUserSelectable: true,
+					requiresAuthorization: template.requiresAuthorization,
+				});
+			}
+		}
+
 		this._currentModels = models;
 		this._chatEndpoints = chatEndpoints;
 		return models;
@@ -372,7 +414,20 @@ export class LanguageModelAccess extends Disposable implements IExtensionContrib
 			const allEndpoints = await this._endpointProvider.getAllChatEndpoints();
 			return await this._automodeService.resolveAutoModeEndpoint(undefined, allEndpoints);
 		}
-		return this._chatEndpoints.find(e => e.model === ModelAliasRegistry.resolveAlias(model.id));
+		const resolvedId = ModelAliasRegistry.resolveAlias(model.id);
+		const cached = this._chatEndpoints.find(e => e.model === resolvedId);
+
+		// In standalone BYOK mode, CAPI endpoints are unusable (no real GitHub session).
+		// If we found a CAPI endpoint in the cache (from a race at startup or stale list),
+		// do a fresh lookup that prioritises extension-contributed (BYOK) endpoints.
+		if (cached && !cached.isExtensionContributed && isStandaloneByokChatFromProduct()) {
+			const freshEndpoints = await this._endpointProvider.getAllChatEndpoints();
+			const byok = freshEndpoints.find(e => e.model === resolvedId && e.isExtensionContributed);
+			if (byok) {
+				return byok;
+			}
+		}
+		return cached;
 	}
 
 	private async _provideLanguageModelChatResponse(
@@ -656,7 +711,7 @@ export class CopilotLanguageModelWrapper extends Disposable {
 				throw vscode.LanguageModelError.Blocked(blockedExtensionMessage);
 			} else if (result.type === ChatFetchResponseType.QuotaExceeded) {
 				const outageStatus = await this._octoKitService.getGitHubOutageStatus();
-				const details = getErrorDetailsFromChatFetchError(result, (await this._authenticationService.getCopilotToken()).copilotPlan, outageStatus);
+				const details = getErrorDetailsFromChatFetchError(result, await copilotPlanForErrorMessages(this._authenticationService), outageStatus);
 				const err = new vscode.LanguageModelError(details.message);
 				err.name = 'ChatQuotaExceeded';
 				throw err;

@@ -24,6 +24,7 @@ import { CancellationToken } from '../../../util/vs/base/common/cancellation';
 import { DisposableStore, IDisposable, combinedDisposable } from '../../../util/vs/base/common/lifecycle';
 import { URI } from '../../../util/vs/base/common/uri';
 import { IInstantiationService } from '../../../util/vs/platform/instantiation/common/instantiation';
+import { isStandaloneByokChatFromProduct } from '../../byok/common/standaloneByokProduct';
 import { ContributionCollection, IExtensionContribution } from '../../common/contributions';
 import { vscodeNodeChatContributions } from '../../extension/vscode-node/contributions';
 import { IMergeConflictService } from '../../git/common/mergeConflictService';
@@ -94,6 +95,11 @@ export class ConversationFeature implements IExtensionContribution {
 			this.logService.info(`ConversationFeature: Copilot token already available`);
 			this.activated = true;
 			activationBlockerDeferred.complete();
+		} else if (isStandaloneByokChatFromProduct()) {
+			this.logService.info(`ConversationFeature: Standalone BYOK product — activating chat without Copilot token`);
+			this.activated = true;
+			this.enabled = true;
+			activationBlockerDeferred.complete();
 		} else {
 			markChatExtGlobal(ChatExtGlobalPerfMark.WillWaitForCopilotToken);
 			this.logService.info(`ConversationFeature: Waiting for copilot token to activate conversation feature`);
@@ -101,8 +107,9 @@ export class ConversationFeature implements IExtensionContribution {
 
 		this._disposables.add(authenticationService.onDidAuthenticationChange(async () => {
 			const hasSession = !!authenticationService.copilotToken;
-			this.logService.info(`ConversationFeature: onDidAuthenticationChange has token: ${hasSession}`);
-			if (hasSession) {
+			const standaloneByok = isStandaloneByokChatFromProduct();
+			this.logService.info(`ConversationFeature: onDidAuthenticationChange has token: ${hasSession}, standaloneByok: ${standaloneByok}`);
+			if (hasSession || standaloneByok) {
 				markChatExtGlobal(ChatExtGlobalPerfMark.DidWaitForCopilotToken);
 				this.activated = true;
 			} else {
@@ -342,9 +349,9 @@ export class ConversationFeature implements IExtensionContribution {
 
 	private registerCopilotTokenListener() {
 		this._disposables.add(this.authenticationService.onDidAuthenticationChange(() => {
-			const chatEnabled = this.authenticationService.copilotToken !== undefined;
+			const chatEnabled = isStandaloneByokChatFromProduct() || this.authenticationService.copilotToken !== undefined;
 			this.logService.info(`copilot token sku: ${this.authenticationService.copilotToken?.sku ?? ''}`);
-			this.enabled = chatEnabled ?? false;
+			this.enabled = chatEnabled;
 		}));
 	}
 

@@ -1,0 +1,81 @@
+{
+  "name": "writer",
+  "displayName": "Rich Writer",
+  "description": "Notion-style rich text editor for Markdown and RTF files.",
+  "version": "1.0.0",
+  "publisher": "vscode",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.104.0"
+  },
+  "enabledApiProposals": [
+    "chatContextProvider"
+  ],
+  "main": "./out/extension",
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "ui",
+    "workspace"
+  ],
+  "activationEvents": [
+    "onCustomEditor:vscode.writer.editor",
+    "onChatContextProvider:vscode.writer-writerDocument"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": true,
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "vscode.writer.editor",
+        "displayName": "Rich Writer",
+        "priority": "default",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          },
+          {
+            "filenamePattern": "*.rtf"
+          }
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "vscode.writer.openChatWithSelection",
+        "title": "Open Chat with Writer Selection",
+        "category": "Writer"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "npm run build-webview && node ../../node_modules/gulp/bin/gulp.js --gulpfile ../../build/gulpfile.extensions.ts compile-extension:writer",
+    "watch": "npm run build-webview && node ../../node_modules/gulp/bin/gulp.js --gulpfile ../../build/gulpfile.extensions.ts watch-extension:writer",
+    "build-webview": "node ./esbuild.webview.mts",
+    "watch-webview": "node ./esbuild.webview.mts --watch"
+  },
+  "devDependencies": {
+    "@tiptap/extension-bubble-menu": "^2.27.2",
+    "@tiptap/extension-placeholder": "^2.11.5",
+    "@tiptap/extension-task-item": "^2.11.5",
+    "@tiptap/extension-task-list": "^2.11.5",
+    "@tiptap/extension-underline": "^2.11.5",
+    "@tiptap/pm": "^2.11.5",
+    "@tiptap/react": "^2.11.5",
+    "@tiptap/starter-kit": "^2.11.5",
+    "@types/node": "22.x",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/turndown": "^5.0.5",
+    "lucide-react": "^0.468.0",
+    "marked": "^15.0.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "turndown": "^7.2.0"
+  }
+}

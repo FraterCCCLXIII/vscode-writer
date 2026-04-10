@@ -678,7 +678,7 @@ export class LanguageModelsService implements ILanguageModelsService {
 				configuration: item.configuration,
 				managementCommand: item.managementCommand,
 				when: item.when,
-				isDefault: item.vendor === 'copilot'
+				isDefault: this._productService.standaloneByokChat ? item.vendor === 'openai' : item.vendor === 'copilot'
 			};
 			this._vendors.set(item.vendor, vendor);
 			addedVendorIds.push(item.vendor);
@@ -902,6 +902,17 @@ export class LanguageModelsService implements ILanguageModelsService {
 					if (models.length) {
 						allModels.push(...models);
 						languageModelsGroups.push({ group, modelIdentifiers: models.map(m => m.identifier) });
+					} else {
+						// Surface configured groups even when discovery returns no models, so users can edit/remove the group
+						// and are not blocked by duplicate name validation against an invisible entry.
+						languageModelsGroups.push({
+							group,
+							modelIdentifiers: [],
+							status: {
+								message: localize('languageModelsGroupNoModels', 'No models are available for this provider group. Check your API key, network access, and that your account can use models supported by this editor. You can remove this group from {0} if it is unused.', '`chatLanguageModels.json`'),
+								severity: Severity.Warning
+							}
+						});
 					}
 
 					// Collect per-model configurations from the group
@@ -1376,7 +1387,7 @@ export class LanguageModelsService implements ILanguageModelsService {
 						inputBox.severity = Severity.Error;
 						return;
 					}
-					if (!existing && languageModelProviderGroups.some(g => g.name === value)) {
+					if (!existing && languageModelProviderGroups.some(g => g.vendor === vendor.vendor && g.name === value)) {
 						inputBox.validationMessage = localize('nameExists', "A language models group with this name already exists");
 						inputBox.severity = Severity.Error;
 						return;

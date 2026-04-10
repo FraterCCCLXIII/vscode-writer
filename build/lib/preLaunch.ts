@@ -37,7 +37,8 @@ async function getElectron() {
 }
 
 async function ensureCompiled() {
-	if (!(await exists('out'))) {
+	// `out/` may exist with only partial output (e.g. interrupted compile). Require the Electron entry.
+	if (!(await exists(path.join('out', 'main.js')))) {
 		await runProcess(npm, ['run', 'compile']);
 	}
 }

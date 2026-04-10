@@ -13,6 +13,7 @@ import { ITelemetryService } from '../../../platform/telemetry/common/telemetry'
 import { TelemetryData } from '../../../platform/telemetry/common/telemetryData';
 import { Disposable } from '../../../util/vs/base/common/lifecycle';
 import { autorun } from '../../../util/vs/base/common/observableInternal';
+import { isStandaloneByokChatFromProduct } from '../../byok/common/standaloneByokProduct';
 import { GHPR_EXTENSION_ID } from '../../chatSessions/vscode/chatSessionsUriHandler';
 import { EXTENSION_ID } from '../../common/constants';
 
@@ -120,8 +121,13 @@ export class ContextKeysContribution extends Disposable {
 		let error: unknown | undefined = undefined;
 		let key: string | undefined;
 		try {
-			await this._authenticationService.getCopilotToken();
-			key = welcomeViewContextKeys.Activated;
+			if (isStandaloneByokChatFromProduct()) {
+				// BYOK-only product: chat works without GitHub / CAPI token; still set activated so the chat UI is enabled.
+				key = welcomeViewContextKeys.Activated;
+			} else {
+				await this._authenticationService.getCopilotToken();
+				key = welcomeViewContextKeys.Activated;
+			}
 		} catch (e: any) {
 			error = e;
 			const reason = e.message || e;

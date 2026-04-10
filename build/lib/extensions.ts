@@ -598,6 +598,7 @@ const esbuildMediaScripts = [
 	'mermaid-chat-features/esbuild.webview.mts',
 	'notebook-renderers/esbuild.notebook.mts',
 	'simple-browser/esbuild.webview.mts',
+	'writer/esbuild.webview.mts',
 ];
 
 export function buildExtensionMedia(isWatch: boolean, outputRoot?: string): Promise<void> {

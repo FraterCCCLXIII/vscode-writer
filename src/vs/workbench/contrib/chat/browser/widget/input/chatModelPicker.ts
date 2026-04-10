@@ -166,13 +166,21 @@ function createModelAction(
 	};
 }
 
-function shouldShowManageModelsAction(chatEntitlementService: IChatEntitlementService): boolean {
-	return chatEntitlementService.entitlement === ChatEntitlement.Free ||
-		chatEntitlementService.entitlement === ChatEntitlement.EDU ||
-		chatEntitlementService.entitlement === ChatEntitlement.Pro ||
-		chatEntitlementService.entitlement === ChatEntitlement.ProPlus ||
-		chatEntitlementService.entitlement === ChatEntitlement.Business ||
-		chatEntitlementService.entitlement === ChatEntitlement.Enterprise ||
+function shouldShowManageModelsAction(chatEntitlementService: IChatEntitlementService, productService: IProductService): boolean {
+	if (productService.standaloneByokChat) {
+		return true;
+	}
+	const entitlement = chatEntitlementService.entitlement;
+	return entitlement === ChatEntitlement.Unknown ||
+		entitlement === ChatEntitlement.Unresolved ||
+		entitlement === ChatEntitlement.Available ||
+		entitlement === ChatEntitlement.Unavailable ||
+		entitlement === ChatEntitlement.Free ||
+		entitlement === ChatEntitlement.EDU ||
+		entitlement === ChatEntitlement.Pro ||
+		entitlement === ChatEntitlement.ProPlus ||
+		entitlement === ChatEntitlement.Business ||
+		entitlement === ChatEntitlement.Enterprise ||
 		chatEntitlementService.isInternal;
 }
 
@@ -197,7 +205,7 @@ function createManageModelsAction(commandService: ICommandService): IActionWidge
  *    - Available models sorted alphabetically, followed by unavailable models
  *    - Unavailable models show upgrade/update/admin status
  * 3. Other Models (collapsible toggle, available first, then sorted by vendor then name)
- * 4. Optional "Manage Models..." action shown in Other Models after a separator
+ * 4. Optional "Manage Models..." after a separator — always outside the "Other Models" section so it stays visible while that section is collapsed
  */
 export function buildModelPickerItems(
 	models: ILanguageModelChatMetadataAndIdentifier[],
@@ -414,14 +422,15 @@ export function buildModelPickerItems(
 		}
 
 		if (manageModelsAction) {
-			items.push({ kind: ActionListItemKind.Separator, section: otherModels.length ? ModelPickerSection.Other : undefined });
+			// No `section`: items in `other` are hidden when that section is collapsed, but `showAlways` only
+			// bypasses collapse while filtering (actionList.ts). Keys/settings must stay visible without expanding Other Models.
+			items.push({ kind: ActionListItemKind.Separator });
 			items.push({
 				item: manageModelsAction,
 				kind: ActionListItemKind.Action,
 				label: manageModelsAction.label,
 				group: { title: '', icon: Codicon.blank },
 				hideIcon: false,
-				section: otherModels.length ? ModelPickerSection.Other : undefined,
 				showAlways: true,
 			});
 		}
@@ -439,6 +448,20 @@ export function buildModelPickerItems(
 			});
 		for (const model of sortedModels) {
 			items.push(createModelItem(createModelAction(model, selectedModelId, onSelect, languageModelsService!), model, hoverPosition, languageModelsService));
+		}
+
+		if (manageModelsAction) {
+			if (items.length > 0) {
+				items.push({ kind: ActionListItemKind.Separator });
+			}
+			items.push({
+				item: manageModelsAction,
+				kind: ActionListItemKind.Action,
+				label: manageModelsAction.label,
+				group: { title: '', icon: Codicon.blank },
+				hideIcon: false,
+				showAlways: true,
+			});
 		}
 	}
 
@@ -661,7 +684,7 @@ export class ModelPickerWidget extends Disposable {
 		const isPro = isProUser(this._entitlementService.entitlement);
 		const manifest = this._languageModelsService.getModelsControlManifest();
 		const controlModelsForTier = isPro ? manifest.paid : manifest.free;
-		const canShowManageModelsAction = this._delegate.showManageModelsAction() && shouldShowManageModelsAction(this._entitlementService);
+		const canShowManageModelsAction = this._delegate.showManageModelsAction() && shouldShowManageModelsAction(this._entitlementService, this._productService);
 		const manageModelsAction = canShowManageModelsAction ? createManageModelsAction(this._commandService) : undefined;
 		const logModelPickerInteraction = (interaction: ChatModelPickerInteraction) => {
 			this._telemetryService.publicLog2<ChatModelPickerInteractionEvent, ChatModelPickerInteractionClassification>('chat.modelPickerInteraction', { interaction });
@@ -677,7 +700,7 @@ export class ModelPickerWidget extends Disposable {
 			onSelect,
 			manageSettingsUrl,
 			this._delegate.useGroupedModelPicker(),
-			!showFilter ? manageModelsAction : undefined,
+			manageModelsAction,
 			this._entitlementService,
 			this._delegate.showUnavailableFeatured(),
 			this._delegate.showFeatured(),

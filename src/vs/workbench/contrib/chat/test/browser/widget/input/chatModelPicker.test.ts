@@ -129,6 +129,31 @@ suite('buildModelPickerItems', () => {
 		assert.strictEqual(actions[0].label, 'Auto');
 	});
 
+	test('flat model list appends manage models after separator', () => {
+		const auto = createAutoModel();
+		const modelA = createModel('gpt-4o', 'GPT-4o');
+		const items = buildModelPickerItems(
+			[auto, modelA],
+			undefined,
+			[],
+			{},
+			'1.100.0',
+			StateType.Idle,
+			() => { },
+			undefined,
+			false,
+			stubManageModelsAction,
+			stubChatEntitlementService,
+			true,
+			true,
+			undefined,
+			stubLanguageModelsService,
+		);
+		const actions = getActionItems(items);
+		assert.strictEqual(actions[actions.length - 1].item?.id, 'manageModels');
+		assert.ok(getSeparatorCount(items) >= 1);
+	});
+
 	test('empty models list produces auto and manage models entries', () => {
 		const items = callBuild([]);
 		const actions = getActionItems(items);

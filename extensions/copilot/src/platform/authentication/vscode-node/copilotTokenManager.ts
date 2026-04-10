@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import * as path from 'path';
 import { env, window } from 'vscode';
 import { TaskSingler } from '../../../util/common/taskSingler';
 import { ConfigKey, IConfigurationService } from '../../configuration/common/configurationService';
@@ -13,13 +14,28 @@ import { BaseOctoKitService } from '../../github/common/githubService';
 import { ILogService } from '../../log/common/logService';
 import { IFetcherService } from '../../networking/common/fetcherService';
 import { ITelemetryService } from '../../telemetry/common/telemetry';
-import { CopilotToken, ExtendedTokenInfo, TokenErrorNotificationId, TokenInfoOrError } from '../common/copilotToken';
+import { CopilotToken, ExtendedTokenInfo, TokenErrorNotificationId, TokenInfoOrError, createTestExtendedTokenInfo } from '../common/copilotToken';
 import { nowSeconds } from '../common/copilotTokenManager';
 import { BaseCopilotTokenManager } from '../node/copilotTokenManager';
 import { getAnyAuthSession } from './session';
 
 //Flag if we've shown message about broken oauth token.
 let shown401Message = false;
+
+let cachedStandaloneByokFromProduct: boolean | undefined;
+function isStandaloneByokChatProduct(): boolean {
+	if (cachedStandaloneByokFromProduct !== undefined) {
+		return cachedStandaloneByokFromProduct;
+	}
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		const product = require(path.join(env.appRoot, 'product.json')) as { standaloneByokChat?: boolean };
+		cachedStandaloneByokFromProduct = product.standaloneByokChat === true;
+	} catch {
+		cachedStandaloneByokFromProduct = false;
+	}
+	return cachedStandaloneByokFromProduct;
+}
 
 export class NotSignedUpError extends Error { }
 export class SubscriptionExpiredError extends Error { }
@@ -68,6 +84,20 @@ export class VSCodeCopilotTokenManager extends BaseCopilotTokenManager {
 		const failWith = this.configurationService.getConfig(ConfigKey.Advanced.DebugGitHubAuthFailWith);
 		if (failWith) {
 			return { kind: 'failure', reason: failWith };
+		}
+
+		if (isStandaloneByokChatProduct()) {
+			this._logService.info('Copilot token: standalone BYOK (product.json) — skipping GitHub session; using local stub token.');
+			const stub = createTestExtendedTokenInfo({
+				/** Non-empty so chat fetcher does not treat the session as "key is missing"; not sent to CAPI (blocked there for this username). */
+				token: 'standalone-byok-stub',
+				username: 'standalone-byok',
+				copilot_plan: 'individual',
+				individual: true,
+				sku: 'copilot_individual',
+				expires_at: nowSeconds() + 86400 * 365,
+			});
+			return { kind: 'success', ...stub };
 		}
 
 		const allowNoAuthAccess = this.configurationService.getNonExtensionConfig<boolean>('chat.allowAnonymousAccess');

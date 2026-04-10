@@ -11,6 +11,7 @@ import { IFetcherService } from '../../../platform/networking/common/fetcherServ
 import { Disposable } from '../../../util/vs/base/common/lifecycle';
 import { IInstantiationService } from '../../../util/vs/platform/instantiation/common/instantiation';
 import { BYOKKnownModels, isBYOKEnabled } from '../../byok/common/byokProvider';
+import { isStandaloneByokChatFromProduct } from '../../byok/common/standaloneByokProduct';
 import { IExtensionContribution } from '../../common/contributions';
 import { AnthropicLMProvider } from './anthropicProvider';
 import { AzureBYOKModelProvider } from './azureProvider';
@@ -38,33 +39,42 @@ export class BYOKContrib extends Disposable implements IExtensionContribution {
 	) {
 		super();
 		this._byokStorageService = new BYOKStorageService(extensionContext);
-		this._authChange(authService, this._instantiationService);
+		void this._tryRegisterByokProviders(authService, this._instantiationService);
 
 		this._register(authService.onDidAuthenticationChange(() => {
-			this._authChange(authService, this._instantiationService);
+			void this._tryRegisterByokProviders(authService, this._instantiationService);
 		}));
 	}
 
-	private async _authChange(authService: IAuthenticationService, instantiationService: IInstantiationService) {
-		if (authService.copilotToken && isBYOKEnabled(authService.copilotToken, this._capiClientService) && !this._byokProvidersRegistered) {
-			this._byokProvidersRegistered = true;
-			// Update known models list from CDN so all providers have the same list
-			const knownModels = await this.fetchKnownModelList(this._fetcherService);
-			if (this._store.isDisposed) {
-				return;
-			}
-			this._providers.set(OllamaLMProvider.providerName.toLowerCase(), instantiationService.createInstance(OllamaLMProvider, this._byokStorageService));
-			this._providers.set(AnthropicLMProvider.providerName.toLowerCase(), instantiationService.createInstance(AnthropicLMProvider, knownModels[AnthropicLMProvider.providerName], this._byokStorageService));
-			this._providers.set(GeminiNativeBYOKLMProvider.providerName.toLowerCase(), instantiationService.createInstance(GeminiNativeBYOKLMProvider, knownModels[GeminiNativeBYOKLMProvider.providerName], this._byokStorageService));
-			this._providers.set(XAIBYOKLMProvider.providerName.toLowerCase(), instantiationService.createInstance(XAIBYOKLMProvider, knownModels[XAIBYOKLMProvider.providerName], this._byokStorageService));
-			this._providers.set(OAIBYOKLMProvider.providerName.toLowerCase(), instantiationService.createInstance(OAIBYOKLMProvider, knownModels[OAIBYOKLMProvider.providerName], this._byokStorageService));
-			this._providers.set(OpenRouterLMProvider.providerName.toLowerCase(), instantiationService.createInstance(OpenRouterLMProvider, this._byokStorageService));
-			this._providers.set(AzureBYOKModelProvider.providerName.toLowerCase(), instantiationService.createInstance(AzureBYOKModelProvider, this._byokStorageService));
-			this._providers.set(CustomOAIBYOKModelProvider.providerName.toLowerCase(), instantiationService.createInstance(CustomOAIBYOKModelProvider, this._byokStorageService));
+	private _shouldRegisterByokProviders(authService: IAuthenticationService): boolean {
+		if (isStandaloneByokChatFromProduct()) {
+			return true;
+		}
+		const token = authService.copilotToken;
+		return Boolean(token && isBYOKEnabled(token, this._capiClientService));
+	}
 
-			for (const [providerName, provider] of this._providers) {
-				this._store.add(lm.registerLanguageModelChatProvider(providerName, provider));
-			}
+	private async _tryRegisterByokProviders(authService: IAuthenticationService, instantiationService: IInstantiationService) {
+		if (this._byokProvidersRegistered || !this._shouldRegisterByokProviders(authService)) {
+			return;
+		}
+		this._byokProvidersRegistered = true;
+		// Update known models list from CDN so all providers have the same list
+		const knownModels = await this.fetchKnownModelList(this._fetcherService);
+		if (this._store.isDisposed) {
+			return;
+		}
+		this._providers.set(OllamaLMProvider.providerName.toLowerCase(), instantiationService.createInstance(OllamaLMProvider, this._byokStorageService));
+		this._providers.set(AnthropicLMProvider.providerName.toLowerCase(), instantiationService.createInstance(AnthropicLMProvider, knownModels[AnthropicLMProvider.providerName], this._byokStorageService));
+		this._providers.set(GeminiNativeBYOKLMProvider.providerName.toLowerCase(), instantiationService.createInstance(GeminiNativeBYOKLMProvider, knownModels[GeminiNativeBYOKLMProvider.providerName], this._byokStorageService));
+		this._providers.set(XAIBYOKLMProvider.providerName.toLowerCase(), instantiationService.createInstance(XAIBYOKLMProvider, knownModels[XAIBYOKLMProvider.providerName], this._byokStorageService));
+		this._providers.set(OAIBYOKLMProvider.providerName.toLowerCase(), instantiationService.createInstance(OAIBYOKLMProvider, knownModels[OAIBYOKLMProvider.providerName], this._byokStorageService));
+		this._providers.set(OpenRouterLMProvider.providerName.toLowerCase(), instantiationService.createInstance(OpenRouterLMProvider, this._byokStorageService));
+		this._providers.set(AzureBYOKModelProvider.providerName.toLowerCase(), instantiationService.createInstance(AzureBYOKModelProvider, this._byokStorageService));
+		this._providers.set(CustomOAIBYOKModelProvider.providerName.toLowerCase(), instantiationService.createInstance(CustomOAIBYOKModelProvider, this._byokStorageService));
+
+		for (const [providerName, provider] of this._providers) {
+			this._store.add(lm.registerLanguageModelChatProvider(providerName, provider));
 		}
 	}
 	private async fetchKnownModelList(fetcherService: IFetcherService): Promise<Record<string, BYOKKnownModels>> {

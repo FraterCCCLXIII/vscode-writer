@@ -54,6 +54,8 @@ export function isBYOKModel(endpoint: IChatEndpoint | undefined): number {
 }
 
 export class OpenAIEndpoint extends ChatEndpoint {
+	public readonly isExtensionContributed = true;
+
 	// Reserved headers that cannot be overridden for security and functionality reasons
 	// Including forbidden request headers: https://developer.mozilla.org/en-US/docs/Glossary/Forbidden_request_header
 	private static readonly _reservedHeaders: ReadonlySet<string> = new Set([

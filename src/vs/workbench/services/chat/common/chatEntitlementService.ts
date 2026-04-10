@@ -16,12 +16,12 @@ import { IContextKey, IContextKeyService, RawContextKey } from '../../../../plat
 import { IDialogService } from '../../../../platform/dialogs/common/dialogs.js';
 import { createDecorator, IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
-import { IProductService } from '../../../../platform/product/common/productService.js';
 import { asText, IRequestService } from '../../../../platform/request/common/request.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { ITelemetryService, TelemetryLevel } from '../../../../platform/telemetry/common/telemetry.js';
 import { AuthenticationSession, IAuthenticationService } from '../../authentication/common/authentication.js';
 import { IOpenerService } from '../../../../platform/opener/common/opener.js';
+import { IProductService } from '../../../../platform/product/common/productService.js';
 import { URI } from '../../../../base/common/uri.js';
 import Severity from '../../../../base/common/severity.js';
 import { IWorkbenchEnvironmentService } from '../../environment/common/environmentService.js';
@@ -1063,7 +1063,8 @@ export class ChatEntitlementContext extends Disposable {
 		@IStorageService private readonly storageService: IStorageService,
 		@ILogService private readonly logService: ILogService,
 		@IConfigurationService private readonly configurationService: IConfigurationService,
-		@ITelemetryService private readonly telemetryService: ITelemetryService
+		@ITelemetryService private readonly telemetryService: ITelemetryService,
+		@IProductService private readonly productService: IProductService,
 	) {
 		super();
 
@@ -1106,6 +1107,26 @@ export class ChatEntitlementContext extends Disposable {
 		}
 
 		this.updateContextSync();
+
+		if (this.productService.standaloneByokChat) {
+			const ent = this._state.entitlement;
+			const needsBootstrap = !this._state.completed
+				|| ent === ChatEntitlement.Unknown
+				|| ent === ChatEntitlement.Unresolved
+				|| ent === ChatEntitlement.Available;
+			if (needsBootstrap) {
+				void (async () => {
+					await this.update({ installed: true, disabled: false, untrusted: false });
+					await this.update({
+						entitlement: ChatEntitlement.Pro,
+						organisations: [],
+						sku: 'standalone_byok',
+						copilotTrackingId: undefined
+					});
+					await this.update({ completed: true });
+				})();
+			}
+		}
 
 		this.registerListeners();
 	}

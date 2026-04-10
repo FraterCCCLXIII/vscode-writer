@@ -174,11 +174,22 @@ export class AutomodeService extends Disposable implements IAutomodeService {
 			throw new Error('No auto mode endpoints provided.');
 		}
 
+		/** Roo-style: only extension/BYOK/local LMs — no CAPI auto-router. */
+		if (knownEndpoints.every(e => e.isExtensionContributed)) {
+			return this._selectThirdPartyAutoEndpoint(chatRequest, knownEndpoints);
+		}
+
 		const conversationId = chatRequest?.sessionResource?.toString() ?? chatRequest?.sessionId ?? 'unknown';
 		const entry = this._autoModelCache.get(conversationId);
 		const tokenBank = this._acquireTokenBank(entry, chatRequest?.location, conversationId);
-		const token = await tokenBank.getToken();
+		let token: AutoModeAPIResponse;
+		try {
+			token = await tokenBank.getToken();
+		} catch (e) {
+			return this._fallbackThirdPartyAutoOrThrow(chatRequest, knownEndpoints, e, 'CAPI auto-mode token failed');
+		}
 
+		try {
 		// After the first turn, skip the router unless explicitly invalidated
 		// (e.g. after conversation compaction/summarization). Token refresh and
 		// default model selection still run so available-model changes are respected.
@@ -229,6 +240,18 @@ export class AutomodeService extends Disposable implements IAutomodeService {
 			needsReEval: false,
 		});
 		return autoEndpoint;
+		} catch (e) {
+			return this._fallbackThirdPartyAutoOrThrow(chatRequest, knownEndpoints, e, 'CAPI auto-mode routing failed');
+		}
+	}
+
+	private _fallbackThirdPartyAutoOrThrow(chatRequest: ChatRequest | undefined, knownEndpoints: IChatEndpoint[], err: unknown, reason: string): IChatEndpoint {
+		const ext = knownEndpoints.filter(ep => ep.isExtensionContributed);
+		if (ext.length) {
+			this._logService.warn(`[AutomodeService] ${reason}; using third-party models (${err})`);
+			return this._selectThirdPartyAutoEndpoint(chatRequest, ext);
+		}
+		throw err;
 	}
 
 	private _acquireTokenBank(entry: AutoModelCacheEntry | undefined, location: ChatLocation | undefined, conversationId: string): AutoModeTokenBank {
@@ -389,6 +412,25 @@ export class AutomodeService extends Disposable implements IAutomodeService {
 			}
 		}
 		return hasValues ? { low, high } : { low: 0, high: 0 };
+	}
+
+	/**
+	 * Pick a sensible default when Auto cannot use GitHub's router (BYOK-only / CAPI failure).
+	 */
+	private _selectThirdPartyAutoEndpoint(chatRequest: ChatRequest | undefined, endpoints: IChatEndpoint[]): IChatEndpoint {
+		if (!endpoints.length) {
+			throw new Error('No third-party chat endpoints available for Auto mode.');
+		}
+		if (hasImage(chatRequest)) {
+			const vision = endpoints.find(e => e.supportsVision);
+			if (vision) {
+				return vision;
+			}
+		}
+		const withTools = endpoints.filter(e => e.supportsToolCalls);
+		const pool = withTools.length > 0 ? withTools : endpoints;
+		const sorted = [...pool].sort((a, b) => `${a.modelProvider}/${a.model}`.localeCompare(`${b.modelProvider}/${b.model}`));
+		return sorted[0];
 	}
 }
 

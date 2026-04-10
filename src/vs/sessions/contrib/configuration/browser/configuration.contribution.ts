@@ -20,8 +20,9 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerDefaultCon
 		'chat.agent.maxRequests': 1000,
 		'chat.customizationsMenu.userStoragePath': '~/.copilot',
 		'chat.viewSessions.enabled': false,
-		'chat.implicitContext.suggestedContext': false,
-		'chat.implicitContext.enabled': { 'panel': 'never' },
+		// Writing-friendly defaults: Rich Writer webview implicit context uses the full document + selection.
+		'chat.implicitContext.suggestedContext': true,
+		'chat.implicitContext.enabled': { 'panel': 'always' },
 		'chat.tools.terminal.enableAutoApprove': true,
 
 		'diffEditor.hideUnchangedRegions.enabled': true,

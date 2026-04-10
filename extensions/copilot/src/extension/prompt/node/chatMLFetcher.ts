@@ -7,7 +7,6 @@ import { Raw } from '@vscode/prompt-tsx';
 import type { OpenAI } from 'openai';
 import type { CancellationToken } from 'vscode';
 import { IAuthenticationService } from '../../../platform/authentication/common/authentication';
-import { CopilotToken } from '../../../platform/authentication/common/copilotToken';
 import { FetchStreamRecorder, IChatMLFetcher, IFetchMLOptions, Source } from '../../../platform/chat/common/chatMLFetcher';
 import { IChatQuotaService } from '../../../platform/chat/common/chatQuotaService';
 import { ChatFetchError, ChatFetchResponseType, ChatFetchRetriableError, ChatLocation, ChatResponse, ChatResponses, RESPONSE_CONTAINED_NO_CHOICES } from '../../../platform/chat/common/commonTypes';
@@ -44,6 +43,8 @@ import { Disposable } from '../../../util/vs/base/common/lifecycle';
 import { escapeRegExpCharacters } from '../../../util/vs/base/common/strings';
 import { generateUuid } from '../../../util/vs/base/common/uuid';
 import { IInstantiationService } from '../../../util/vs/platform/instantiation/common/instantiation';
+import { CopilotToken } from '../../../platform/authentication/common/copilotToken';
+import { isStandaloneByokChatFromProduct } from '../../byok/common/standaloneByokProduct';
 import { isBYOKModel } from '../../byok/node/openAIEndpoint';
 import { EXTENSION_ID } from '../../common/constants';
 import { IPowerService } from '../../power/common/powerService';
@@ -956,6 +957,19 @@ export class ChatMLFetcherImpl extends AbstractChatMLFetcher {
 			this._logService.debug(`chat model ${chatEndpointInfo.model}`);
 
 			secretKey ??= copilotToken.token;
+			// Standalone BYOK product: no real GitHub Copilot session — block CAPI (hosted) models with a clear message.
+			if (copilotToken.username === 'standalone-byok' && !chatEndpointInfo.isExtensionContributed) {
+				const urlOrRequestMetadata = stringifyUrlOrRequestMetadata(chatEndpointInfo.urlOrRequestMetadata);
+				this._logService.warn(`Standalone BYOK: refusing CAPI request to ${urlOrRequestMetadata} (use a BYOK/third-party model or sign in to GitHub).`);
+				return {
+					result: {
+						type: FetchResponseKind.Failed,
+						modelRequestId: undefined,
+						failKind: ChatFailKind.TokenExpiredOrInvalid,
+						reason: 'GitHub Copilot cloud models are not available without signing in. Choose a Bring Your Own Key model (for example OpenAI) in the model picker, or sign in to GitHub.'
+					}
+				};
+			}
 			if (!secretKey) {
 				// If no key is set we error
 				const urlOrRequestMetadata = stringifyUrlOrRequestMetadata(chatEndpointInfo.urlOrRequestMetadata);
@@ -1524,7 +1538,7 @@ export class ChatMLFetcherImpl extends AbstractChatMLFetcher {
 			if (response.status === 402) {
 				// When we receive a 402, we have exceed a quota
 				// This is stored on the token so let's refresh it
-				if (!this._authenticationService.copilotToken?.isChatQuotaExceeded) {
+				if (!isStandaloneByokChatFromProduct() && !this._authenticationService.copilotToken?.isChatQuotaExceeded) {
 					this._authenticationService.resetCopilotToken(response.status);
 					await this._authenticationService.getCopilotToken();
 				}
@@ -2034,7 +2048,7 @@ export class ChatMLFetcherImpl extends AbstractChatMLFetcher {
 		if (codePrefix === 'quota_exceeded' || codePrefix === 'free_quota_exceeded' || codePrefix === 'overage_limit_reached' || codePrefix === 'billing_not_configured') {
 			// Refresh the copilot token so isChatQuotaExceeded reflects the new state,
 			// matching the HTTP 402 handler behavior.
-			if (!this._authenticationService.copilotToken?.isChatQuotaExceeded) {
+			if (!isStandaloneByokChatFromProduct() && !this._authenticationService.copilotToken?.isChatQuotaExceeded) {
 				this._authenticationService.resetCopilotToken(402);
 				await this._authenticationService.getCopilotToken();
 			}

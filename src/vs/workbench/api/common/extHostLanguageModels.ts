@@ -365,11 +365,49 @@ export class ExtHostLanguageModels implements ExtHostLanguageModelsShape {
 			await this.selectLanguageModels(extension, {});
 		}
 
+		const isChatDefault = (modelData: { metadata: ILanguageModelChatMetadata }) =>
+			!!modelData.metadata.isDefaultForLocation[ChatAgentLocation.Chat];
+
+		// Prefer Copilot default when present (signed-in / hosted models).
 		for (const [modelIdentifier, modelData] of this._localModels) {
-			if (modelData.metadata.isDefaultForLocation[ChatAgentLocation.Chat] && modelData.metadata.vendor === 'copilot') {
+			if (isChatDefault(modelData) && modelData.metadata.vendor === 'copilot') {
 				defaultModelId = modelIdentifier;
 				break;
 			}
+		}
+		// Standalone BYOK and other vendors: any model marked default for Chat (e.g. openai as workbench default).
+		if (!defaultModelId) {
+			for (const [modelIdentifier, modelData] of this._localModels) {
+				if (isChatDefault(modelData)) {
+					defaultModelId = modelIdentifier;
+					break;
+				}
+			}
+		}
+		// No explicit default flags (typical for BYOK lists): use first selectable non-Copilot model; prefer openai vendor.
+		if (!defaultModelId) {
+			const fallbacks: string[] = [];
+			for (const [modelIdentifier, modelData] of this._localModels) {
+				if (modelData.metadata.vendor === 'copilot') {
+					continue;
+				}
+				if (modelData.metadata.isUserSelectable === false) {
+					continue;
+				}
+				fallbacks.push(modelIdentifier);
+			}
+			fallbacks.sort((a, b) => {
+				const va = this._localModels.get(a)!.metadata.vendor;
+				const vb = this._localModels.get(b)!.metadata.vendor;
+				if (va === 'openai' && vb !== 'openai') {
+					return -1;
+				}
+				if (vb === 'openai' && va !== 'openai') {
+					return 1;
+				}
+				return a.localeCompare(b);
+			});
+			defaultModelId = fallbacks[0];
 		}
 		if (!defaultModelId && !forceResolveModels) {
 			// Maybe the default wasn't cached so we will try again with resolving the models too

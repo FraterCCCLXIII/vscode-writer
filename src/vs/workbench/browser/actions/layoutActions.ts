@@ -408,6 +408,11 @@ export class ToggleStatusbarVisibilityAction extends Action2 {
 			precondition: IsSessionsWindowContext.negate(),
 			toggled: ContextKeyExpr.equals('config.workbench.statusBar.visible', true),
 			menu: [{
+				id: MenuId.MenubarViewMenu,
+				group: '2_appearance',
+				order: 3,
+				when: IsSessionsWindowContext.negate()
+			}, {
 				id: MenuId.MenubarAppearanceMenu,
 				group: '2_workbench_layout',
 				order: 3,

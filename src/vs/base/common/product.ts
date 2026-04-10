@@ -227,6 +227,11 @@ export interface IProductConfiguration {
 	readonly aiGeneratedWorkspaceTrust?: IAiGeneratedWorkspaceTrust;
 
 	readonly defaultChatAgent: IDefaultChatAgent;
+	/**
+	 * When true, Chat can use BYOK language models without GitHub Copilot sign-in or CAPI token.
+	 * Used by forked products (e.g. Code OSS) that ship standalone API-key chat.
+	 */
+	readonly standaloneByokChat?: boolean;
 	readonly chatParticipantRegistry?: string;
 	readonly chatSessionRecommendations?: IChatSessionRecommendation[];
 	readonly emergencyAlertUrl?: string;

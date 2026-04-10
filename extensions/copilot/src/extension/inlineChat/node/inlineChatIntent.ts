@@ -8,6 +8,7 @@ import { Raw } from '@vscode/prompt-tsx';
 import { BudgetExceededError } from '@vscode/prompt-tsx/dist/base/materialized';
 import type * as vscode from 'vscode';
 import { IAuthenticationService } from '../../../platform/authentication/common/authentication';
+import { copilotPlanForErrorMessages } from '../../byok/common/copilotPlanForErrors';
 import { IResponsePart } from '../../../platform/chat/common/chatMLFetcher';
 import { CanceledResult, ChatFetchResponseType, ChatLocation, ChatResponse, getErrorDetailsFromChatFetchError } from '../../../platform/chat/common/commonTypes';
 import { ConfigKey, IConfigurationService } from '../../../platform/configuration/common/configurationService';
@@ -277,7 +278,7 @@ export class InlineChatIntent implements IIntent {
 
 		if (result.lastResponse.type !== ChatFetchResponseType.Success) {
 			const outageStatus = await this._octoKitService.getGitHubOutageStatus();
-			const details = getErrorDetailsFromChatFetchError(result.lastResponse, (await this._authenticationService.getCopilotToken()).copilotPlan, outageStatus);
+			const details = getErrorDetailsFromChatFetchError(result.lastResponse, await copilotPlanForErrorMessages(this._authenticationService), outageStatus);
 			return {
 				errorDetails: {
 					message: details.message,
