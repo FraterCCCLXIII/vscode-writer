@@ -83,6 +83,7 @@ export class ChatSetupContribution extends Disposable implements IWorkbenchContr
 		@IEnvironmentService private readonly environmentService: IEnvironmentService,
 		@IChatSessionsService private readonly chatSessionsService: IChatSessionsService,
 		@IConfigurationService private readonly configurationService: IConfigurationService,
+		@IProductService private readonly productService: IProductService,
 	) {
 		super();
 
@@ -97,7 +98,9 @@ export class ChatSetupContribution extends Disposable implements IWorkbenchContr
 		this.registerSetupAgents(context, controller);
 		this.registerGrowthSession(chatEntitlementService);
 		this.registerActions(context, requests, controller);
-		this.registerSignInTitleBarEntry(actionViewItemService);
+		if (!this.productService.standaloneThirdPartyChat) {
+			this.registerSignInTitleBarEntry(actionViewItemService);
+		}
 		this.registerUrlLinkHandler();
 		this.checkExtensionInstallation(context);
 	}

@@ -463,6 +463,7 @@ class NullSimilarFilesContextService implements ISimilarFilesContextService {
 class NullEndpointProvider implements IEndpointProvider {
 	declare readonly _serviceBrand: undefined;
 	readonly onDidModelsRefresh = VsEvent.None;
+	notifyThirdPartyLanguageModelsChanged(): void { }
 	async getAllCompletionModels(): Promise<[]> { return []; }
 	async getAllChatEndpoints(): Promise<[]> { return []; }
 	async getChatEndpoint(): Promise<never> { throw new Error('not implemented'); }

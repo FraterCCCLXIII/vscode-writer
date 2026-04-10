@@ -141,6 +141,37 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 			void webviewPanel.webview.postMessage(msg);
 		};
 
+		/** Bridge LSP diagnostics (e.g. Harper) into the webview — they do not paint on custom editors by default. */
+		let diagDebounce: ReturnType<typeof setTimeout> | undefined;
+		const pushDiagnostics = async () => {
+			if (!isMarkdown(document.uri)) {
+				return;
+			}
+			try {
+				const doc = await vscode.workspace.openTextDocument(document.uri);
+				const full = doc.getText();
+				const diags = vscode.languages.getDiagnostics(document.uri);
+				const items = diags.map(d => ({
+					message: d.message,
+					severity: d.severity,
+					text: full.substring(doc.offsetAt(d.range.start), doc.offsetAt(d.range.end)),
+				}));
+				const msg: ToWebview = { type: 'diagnostics', items };
+				void webviewPanel.webview.postMessage(msg);
+			} catch {
+				// ignore
+			}
+		};
+		const scheduleDiagnostics = () => {
+			if (diagDebounce) {
+				clearTimeout(diagDebounce);
+			}
+			diagDebounce = setTimeout(() => {
+				diagDebounce = undefined;
+				void pushDiagnostics();
+			}, 450);
+		};
+
 		const runInlineAi = async (prompt: string, selectionPlain: string, format: 'markdown' | 'rtf') => {
 			inlineAiCts?.cancel();
 			inlineAiCts?.dispose();
@@ -211,7 +242,10 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 		const sub = webviewPanel.webview.onDidReceiveMessage(async (message: FromWebview) => {
 			switch (message.type) {
 				case 'ready':
-					void postInitFromWorkspace();
+					void postInitFromWorkspace().then(() => {
+						scheduleDiagnostics();
+						setTimeout(() => scheduleDiagnostics(), 1200);
+					});
 					break;
 				case 'contentChanged': {
 					let out: string;
@@ -224,6 +258,8 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 					const applied = await applyDiskTextToDocument(out);
 					if (!applied) {
 						ignoreNextDocumentChange = false;
+					} else if (message.format === 'markdown') {
+						scheduleDiagnostics();
 					}
 					break;
 				}
@@ -299,6 +335,12 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 			}
 		});
 
+		const diagSub = vscode.languages.onDidChangeDiagnostics(e => {
+			if (e.uris.some(u => u.toString() === document.uri.toString())) {
+				scheduleDiagnostics();
+			}
+		});
+
 		const docSub = vscode.workspace.onDidChangeTextDocument(e => {
 			if (e.document.uri.toString() !== document.uri.toString()) {
 				return;
@@ -341,7 +383,12 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 			inlineAiCts?.cancel();
 			inlineAiCts?.dispose();
 			inlineAiCts = undefined;
+			if (diagDebounce) {
+				clearTimeout(diagDebounce);
+				diagDebounce = undefined;
+			}
 			sub.dispose();
+			diagSub.dispose();
 			docSub.dispose();
 			this._selectionStore.clear(document.uri);
 		});

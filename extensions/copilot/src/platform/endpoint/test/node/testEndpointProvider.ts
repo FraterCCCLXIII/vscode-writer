@@ -118,6 +118,8 @@ export class TestEndpointProvider implements IEndpointProvider {
 
 	readonly onDidModelsRefresh = Event.None;
 
+	notifyThirdPartyLanguageModelsChanged(): void { }
+
 	private _testEmbeddingEndpoint: IEmbeddingsEndpoint | undefined;
 	private _chatEndpoints: Map<string, IChatEndpoint> = new Map();
 	private _prodChatModelMetadata: Promise<Map<string, IChatModelInformation>>;

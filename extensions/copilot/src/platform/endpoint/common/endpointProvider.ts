@@ -144,6 +144,12 @@ export interface IEndpointProvider {
 	getAllChatEndpoints(): Promise<IChatEndpoint[]>;
 
 	/**
+	 * Signal that third-party language models registered via {@code vscode.lm} may have changed
+	 * (for example after BYOK providers finish registering). Language model access re-enumerates endpoints.
+	 */
+	notifyThirdPartyLanguageModelsChanged(): void;
+
+	/**
 	 * Given a chat request returns the appropriate chat endpoint to serve that request
 	 * @param requestOrFamily The chat request to get the endpoint for, the family you want the endpoint for, or the LanguageModelChat.
 	 */

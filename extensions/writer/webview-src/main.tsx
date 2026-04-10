@@ -17,7 +17,6 @@ import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import TextAlign from '@tiptap/extension-text-align';
-import { marked } from 'marked';
 import { Toolbar } from './toolbar';
 import GlobalDragHandle from './global-drag-handle';
 import { SelectionBubbleMenu } from './SelectionBubbleMenu';
@@ -26,6 +25,8 @@ import { WRITER_THEME_STYLES } from './writerThemeStyles';
 import { WriterImage } from './writerImage';
 import { augmentImageHtml, extractImgSrcsFromHtml } from './htmlImageHelpers';
 import { writerTurndown } from './turndownWriter';
+import { markdownToEditorHtml } from './markdownToEditorHtml';
+import { WriterDiagnostics, type WriterDiagnosticItem } from './writerDiagnostics';
 
 type VsCodeApi = { postMessage: (msg: unknown) => void };
 
@@ -39,7 +40,8 @@ type HostToWebview =
 	| { type: 'inlineAiError'; message: string }
 	| { type: 'pathsResolved'; map: Record<string, string> }
 	| { type: 'imageSaved'; markdownPath: string; webviewSrc: string; alt: string }
-	| { type: 'imageSaveError'; message: string };
+	| { type: 'imageSaveError'; message: string }
+	| { type: 'diagnostics'; items: WriterDiagnosticItem[] };
 
 function getVsCode(): VsCodeApi {
 	const w = globalThis as unknown as { __writerVsCodeApi?: VsCodeApi };
@@ -70,11 +72,6 @@ function plainTextToEditorHtml(plain: string): string {
 			return `<p>${inner}</p>`;
 		})
 		.join('');
-}
-
-function markdownToHtml(md: string): string {
-	const result = marked.parse(md, { async: false });
-	return typeof result === 'string' ? result : '';
 }
 
 /** When marked HTML parses to an empty TipTap doc (unsupported nodes, etc.), show the source as paragraphs. */
@@ -157,6 +154,14 @@ function WriterApp() {
 	const [docFormat, setDocFormat] = useState<'markdown' | 'rtf'>('markdown');
 
 	const editor = useEditor({
+		// Webview is always client-side; avoid a null editor on first paint (breaks init timing vs. marked HTML).
+		immediatelyRender: true,
+		editorProps: {
+			attributes: {
+				// Native Chromium spellcheck fights with Harper/LSP decorations and confuses users.
+				spellcheck: 'false',
+			},
+		},
 		extensions: [
 			StarterKit.configure({
 				headingLevels: [1, 2, 3],
@@ -188,9 +193,9 @@ function WriterApp() {
 				nested: true,
 			}),
 			GlobalDragHandle,
+			WriterDiagnostics,
 		],
 		content: '<p></p>',
-		immediatelyRender: false,
 		onUpdate: () => debouncedPushRef.current(),
 		onSelectionUpdate: () => debouncedSelectionRef.current(),
 	});
@@ -221,6 +226,18 @@ function WriterApp() {
 				return;
 			}
 
+			if (msg.type === 'diagnostics') {
+				const ed = editorRef.current;
+				if (ed && !ed.isDestroyed && Array.isArray(msg.items)) {
+					(
+						ed.chain().focus() as unknown as {
+							setWriterDiagnostics: (items: WriterDiagnosticItem[]) => { run: () => boolean };
+						}
+					).setWriterDiagnostics(msg.items).run();
+				}
+				return;
+			}
+
 			if (msg.type === 'pathsResolved') {
 				const pending = pendingHtmlRef.current;
 				const rawMd = pendingRawMdRef.current ?? '';
@@ -233,12 +250,11 @@ function WriterApp() {
 						if (!ed || ed.isDestroyed) {
 							return;
 						}
-						ed.chain().setContent(html, false).run();
-						const sourceNonEmpty = rawMd.trim().length > 0;
-						const editorHasNoText = ed.getText().trim().length === 0;
-						if (sourceNonEmpty && editorHasNoText) {
-							ed.chain().setContent(markdownPlainFallbackAsHtml(rawMd), false).run();
+						let toApply = html;
+						if (!toApply.trim() && rawMd.trim()) {
+							toApply = markdownPlainFallbackAsHtml(rawMd);
 						}
+						ed.chain().setContent(toApply, false).run();
 						queueMicrotask(() => {
 							canPushToHostRef.current = true;
 						});
@@ -279,7 +295,10 @@ function WriterApp() {
 					formatRef.current = 'markdown';
 					setDocFormat('markdown');
 					const md = msg.payload.markdown.replace(/^\uFEFF/, '');
-					let html = markdownToHtml(md);
+					let html = markdownToEditorHtml(md);
+					if (!html.trim() && md.trim()) {
+						html = markdownPlainFallbackAsHtml(md);
+					}
 					const imgs = extractImgSrcsFromHtml(html);
 					if (imgs.length > 0) {
 						pendingHtmlRef.current = html;
@@ -288,11 +307,6 @@ function WriterApp() {
 						return;
 					}
 					ed.chain().setContent(html, false).run();
-					const sourceNonEmpty = md.trim().length > 0;
-					const editorHasNoText = ed.getText().trim().length === 0;
-					if (sourceNonEmpty && editorHasNoText) {
-						ed.chain().setContent(markdownPlainFallbackAsHtml(md), false).run();
-					}
 					queueMicrotask(() => {
 						canPushToHostRef.current = true;
 					});
@@ -300,14 +314,8 @@ function WriterApp() {
 					formatRef.current = 'rtf';
 					setDocFormat('rtf');
 					const plain = msg.payload.plainText.replace(/^\uFEFF/, '');
-					let html = plainTextToEditorHtml(plain);
+					const html = plainTextToEditorHtml(plain);
 					ed.chain().setContent(html, false).run();
-					const sourceNonEmpty = plain.trim().length > 0;
-					const editorHasNoText = ed.getText().trim().length === 0;
-					if (sourceNonEmpty && editorHasNoText) {
-						html = markdownPlainFallbackAsHtml(plain);
-						ed.chain().setContent(html, false).run();
-					}
 					queueMicrotask(() => {
 						canPushToHostRef.current = true;
 					});

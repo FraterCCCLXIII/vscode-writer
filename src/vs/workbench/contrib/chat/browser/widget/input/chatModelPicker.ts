@@ -167,7 +167,7 @@ function createModelAction(
 }
 
 function shouldShowManageModelsAction(chatEntitlementService: IChatEntitlementService, productService: IProductService): boolean {
-	if (productService.standaloneByokChat) {
+	if (productService.standaloneThirdPartyChat) {
 		return true;
 	}
 	const entitlement = chatEntitlementService.entitlement;

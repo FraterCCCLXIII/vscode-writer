@@ -415,7 +415,7 @@ export class AutomodeService extends Disposable implements IAutomodeService {
 	}
 
 	/**
-	 * Pick a sensible default when Auto cannot use GitHub's router (BYOK-only / CAPI failure).
+	 * Pick a sensible default when Auto cannot use GitHub's router (third-party API keys only / CAPI failure).
 	 */
 	private _selectThirdPartyAutoEndpoint(chatRequest: ChatRequest | undefined, endpoints: IChatEndpoint[]): IChatEndpoint {
 		if (!endpoints.length) {

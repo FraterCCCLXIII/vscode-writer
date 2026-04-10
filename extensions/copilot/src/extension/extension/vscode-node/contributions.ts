@@ -5,7 +5,7 @@
 
 import { PromptFileContribution } from '../../agents/vscode-node/promptFileContrib';
 import { AuthenticationContrib } from '../../authentication/vscode-node/authentication.contribution';
-import { BYOKContrib } from '../../byok/vscode-node/byokContribution';
+import { ThirdPartyLanguageModelContribution } from '../../byok/vscode-node/thirdPartyLanguageModelContribution';
 import { ChatDebugFileLoggerContribution } from '../../chat/vscode-node/chatDebugFileLoggerService';
 import { ChatQuotaContribution } from '../../chat/vscode-node/chatQuota.contribution';
 import { ChatSessionContextContribution } from '../../chatSessionContext/vscode-node/chatSessionContextProvider';
@@ -67,6 +67,7 @@ export const vscodeNodeContributions: IExtensionContributionFactory[] = [
 	asContributionFactory(ExtensionStateCommandContribution),
 	asContributionFactory(ConversationFeature),
 	asContributionFactory(AuthenticationContrib),
+	asContributionFactory(ThirdPartyLanguageModelContribution),
 	chatBlockLanguageContribution,
 	asContributionFactory(LoggingActionsContrib),
 	asContributionFactory(FetcherTelemetryContribution),
@@ -118,7 +119,6 @@ export const vscodeNodeChatContributions: IExtensionContributionFactory[] = [
 	asContributionFactory(SetupTestsContribution),
 	asContributionFactory(FixTestFailureContribution),
 	asContributionFactory(IgnoredFileProviderContribution),
-	asContributionFactory(BYOKContrib),
 	asContributionFactory(McpSetupCommands),
 	asContributionFactory(LanguageModelProxyContrib),
 	asContributionFactory(PromptFileContribution),

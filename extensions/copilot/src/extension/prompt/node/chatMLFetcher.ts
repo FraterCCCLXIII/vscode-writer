@@ -44,7 +44,7 @@ import { escapeRegExpCharacters } from '../../../util/vs/base/common/strings';
 import { generateUuid } from '../../../util/vs/base/common/uuid';
 import { IInstantiationService } from '../../../util/vs/platform/instantiation/common/instantiation';
 import { CopilotToken } from '../../../platform/authentication/common/copilotToken';
-import { isStandaloneByokChatFromProduct } from '../../byok/common/standaloneByokProduct';
+import { STANDALONE_THIRD_PARTY_CHAT_TOKEN_USERNAME, isStandaloneThirdPartyChatFromProduct } from '../../../platform/authentication/common/standaloneThirdPartyChatProduct';
 import { isBYOKModel } from '../../byok/node/openAIEndpoint';
 import { EXTENSION_ID } from '../../common/constants';
 import { IPowerService } from '../../power/common/powerService';
@@ -957,16 +957,16 @@ export class ChatMLFetcherImpl extends AbstractChatMLFetcher {
 			this._logService.debug(`chat model ${chatEndpointInfo.model}`);
 
 			secretKey ??= copilotToken.token;
-			// Standalone BYOK product: no real GitHub Copilot session — block CAPI (hosted) models with a clear message.
-			if (copilotToken.username === 'standalone-byok' && !chatEndpointInfo.isExtensionContributed) {
+			// Standalone third-party chat: no real GitHub Copilot session — block CAPI (hosted) models with a clear message.
+			if (copilotToken.username === STANDALONE_THIRD_PARTY_CHAT_TOKEN_USERNAME && !chatEndpointInfo.isExtensionContributed) {
 				const urlOrRequestMetadata = stringifyUrlOrRequestMetadata(chatEndpointInfo.urlOrRequestMetadata);
-				this._logService.warn(`Standalone BYOK: refusing CAPI request to ${urlOrRequestMetadata} (use a BYOK/third-party model or sign in to GitHub).`);
+				this._logService.warn(`Standalone third-party chat: refusing CAPI request to ${urlOrRequestMetadata} (use a third-party model with your API key or sign in to GitHub).`);
 				return {
 					result: {
 						type: FetchResponseKind.Failed,
 						modelRequestId: undefined,
 						failKind: ChatFailKind.TokenExpiredOrInvalid,
-						reason: 'GitHub Copilot cloud models are not available without signing in. Choose a Bring Your Own Key model (for example OpenAI) in the model picker, or sign in to GitHub.'
+						reason: 'GitHub Copilot cloud models are not available without signing in. Choose a third-party model (for example OpenAI) in the model picker and add your API key, or sign in to GitHub.'
 					}
 				};
 			}
@@ -1538,7 +1538,7 @@ export class ChatMLFetcherImpl extends AbstractChatMLFetcher {
 			if (response.status === 402) {
 				// When we receive a 402, we have exceed a quota
 				// This is stored on the token so let's refresh it
-				if (!isStandaloneByokChatFromProduct() && !this._authenticationService.copilotToken?.isChatQuotaExceeded) {
+				if (!isStandaloneThirdPartyChatFromProduct() && !this._authenticationService.copilotToken?.isChatQuotaExceeded) {
 					this._authenticationService.resetCopilotToken(response.status);
 					await this._authenticationService.getCopilotToken();
 				}
@@ -2048,7 +2048,7 @@ export class ChatMLFetcherImpl extends AbstractChatMLFetcher {
 		if (codePrefix === 'quota_exceeded' || codePrefix === 'free_quota_exceeded' || codePrefix === 'overage_limit_reached' || codePrefix === 'billing_not_configured') {
 			// Refresh the copilot token so isChatQuotaExceeded reflects the new state,
 			// matching the HTTP 402 handler behavior.
-			if (!isStandaloneByokChatFromProduct() && !this._authenticationService.copilotToken?.isChatQuotaExceeded) {
+			if (!isStandaloneThirdPartyChatFromProduct() && !this._authenticationService.copilotToken?.isChatQuotaExceeded) {
 				this._authenticationService.resetCopilotToken(402);
 				await this._authenticationService.getCopilotToken();
 			}

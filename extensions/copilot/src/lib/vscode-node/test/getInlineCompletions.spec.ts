@@ -150,6 +150,8 @@ class TestEndpointProvider implements IEndpointProvider {
 	readonly _serviceBrand: undefined;
 	readonly onDidModelsRefresh = Event.None;
 
+	notifyThirdPartyLanguageModelsChanged(): void { }
+
 	async getAllCompletionModels(forceRefresh?: boolean) {
 		return [];
 	}

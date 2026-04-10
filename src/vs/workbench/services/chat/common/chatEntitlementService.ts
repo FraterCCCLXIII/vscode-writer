@@ -621,14 +621,16 @@ export class ChatEntitlementRequests extends Disposable {
 		@ILifecycleService private readonly lifecycleService: ILifecycleService,
 		@IDefaultAccountService private readonly defaultAccountService: IDefaultAccountService,
 		@IAuthenticationService private readonly authenticationService: IAuthenticationService,
+		@IProductService private readonly productService: IProductService,
 	) {
 		super();
 
 		this.state = { entitlement: this.context.state.entitlement };
 
-		this.registerListeners();
-
-		this.resolve();
+		if (!this.productService.standaloneThirdPartyChat) {
+			this.registerListeners();
+			this.resolve();
+		}
 	}
 
 	private registerListeners(): void {
@@ -1108,7 +1110,7 @@ export class ChatEntitlementContext extends Disposable {
 
 		this.updateContextSync();
 
-		if (this.productService.standaloneByokChat) {
+		if (this.productService.standaloneThirdPartyChat) {
 			const ent = this._state.entitlement;
 			const needsBootstrap = !this._state.completed
 				|| ent === ChatEntitlement.Unknown

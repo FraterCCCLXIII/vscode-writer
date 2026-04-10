@@ -84,7 +84,7 @@ export const getAgentTools = async (accessor: ServicesAccessor, request: vscode.
 	const allowTools: Record<string, boolean> = {};
 
 	const learned = editToolLearningService.getPreferredEndpointEditTool(model);
-	if (learned) { // a learning-enabled (BYOK) model, we should go with what it prefers
+	if (learned) { // a learning-enabled third-party model, we should go with what it prefers
 		allowTools[ToolName.EditFile] = learned.includes(ToolName.EditFile);
 		allowTools[ToolName.ReplaceString] = learned.includes(ToolName.ReplaceString);
 		allowTools[ToolName.MultiReplaceString] = learned.includes(ToolName.MultiReplaceString);

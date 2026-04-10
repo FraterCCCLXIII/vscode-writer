@@ -786,6 +786,8 @@ multiple lines.
 		declare readonly _serviceBrand: undefined;
 		readonly onDidModelsRefresh = Event.None;
 
+		notifyThirdPartyLanguageModelsChanged(): void { }
+
 		private _endpoint = new MockChatEndpoint();
 
 		get mockEndpoint(): MockChatEndpoint {

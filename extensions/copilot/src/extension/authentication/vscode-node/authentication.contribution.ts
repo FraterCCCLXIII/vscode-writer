@@ -5,6 +5,7 @@
 import { commands, window } from 'vscode';
 import { IAuthenticationService } from '../../../platform/authentication/common/authentication';
 import { IAuthenticationChatUpgradeService } from '../../../platform/authentication/common/authenticationUpgrade';
+import { isStandaloneThirdPartyChatFromProduct } from '../../../platform/authentication/common/standaloneThirdPartyChatProduct';
 import { IVSCodeExtensionContext } from '../../../platform/extContext/common/extensionContext';
 import { ILogService } from '../../../platform/log/common/logService';
 import { Event } from '../../../util/vs/base/common/event';
@@ -17,7 +18,9 @@ import { IInstantiationService } from '../../../util/vs/platform/instantiation/c
 export class AuthenticationContrib extends Disposable {
 	constructor(@IInstantiationService private readonly instantiationService: IInstantiationService) {
 		super();
-		this.askToUpgradeAuthPermissions();
+		if (!isStandaloneThirdPartyChatFromProduct()) {
+			this.askToUpgradeAuthPermissions();
+		}
 	}
 	private async askToUpgradeAuthPermissions() {
 		const authUpgradeAsk = this._register(this.instantiationService.createInstance(AuthUpgradeAsk));

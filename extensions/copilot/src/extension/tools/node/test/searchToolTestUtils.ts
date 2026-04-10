@@ -31,6 +31,7 @@ export function createMockEndpointProvider(modelFamily: string): IEndpointProvid
 	return {
 		_serviceBrand: undefined,
 		onDidModelsRefresh: Event.None,
+		notifyThirdPartyLanguageModelsChanged: () => { },
 		getChatEndpoint: async () => ({
 			family: modelFamily,
 			model: 'test-model',

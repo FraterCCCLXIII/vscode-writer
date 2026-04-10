@@ -4,13 +4,13 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { IAuthenticationService } from '../../../platform/authentication/common/authentication';
-import { isStandaloneByokChatFromProduct } from './standaloneByokProduct';
+import { isStandaloneThirdPartyChatFromProduct } from '../../../platform/authentication/common/standaloneThirdPartyChatProduct';
 
 /**
- * Resolves the Copilot plan string for user-facing error copy. Standalone BYOK builds have no CAPI token.
+ * Resolves the Copilot plan string for user-facing error copy. Standalone third-party chat builds have no CAPI token.
  */
 export async function copilotPlanForErrorMessages(authenticationService: IAuthenticationService): Promise<string> {
-	if (isStandaloneByokChatFromProduct()) {
+	if (isStandaloneThirdPartyChatFromProduct()) {
 		return 'individual';
 	}
 	return (await authenticationService.getCopilotToken()).copilotPlan;

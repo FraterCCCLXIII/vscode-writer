@@ -678,7 +678,7 @@ export class LanguageModelsService implements ILanguageModelsService {
 				configuration: item.configuration,
 				managementCommand: item.managementCommand,
 				when: item.when,
-				isDefault: this._productService.standaloneByokChat ? item.vendor === 'openai' : item.vendor === 'copilot'
+				isDefault: this._productService.standaloneThirdPartyChat ? item.vendor === 'openai' : item.vendor === 'copilot'
 			};
 			this._vendors.set(item.vendor, vendor);
 			addedVendorIds.push(item.vendor);

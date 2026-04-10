@@ -37,6 +37,27 @@ export const WRITER_THEME_STYLES = `
 	color: var(--vscode-editor-selectionForeground, var(--vscode-editor-foreground));
 }
 
+/* LSP / Harper diagnostics bridged from host (see writerDiagnostics.ts) */
+.writer-lint-error,
+.writer-lint-warning,
+.writer-lint-info,
+.writer-lint-hint {
+	text-decoration: underline wavy;
+	text-underline-offset: 2px;
+}
+.writer-lint-error {
+	text-decoration-color: var(--vscode-editorError-foreground, #f14c4c);
+}
+.writer-lint-warning {
+	text-decoration-color: var(--vscode-editorWarning-foreground, #cca700);
+}
+.writer-lint-info {
+	text-decoration-color: var(--vscode-editorInfo-foreground, #3794ff);
+}
+.writer-lint-hint {
+	text-decoration-color: var(--vscode-editorHint-foreground, var(--vscode-descriptionForeground));
+}
+
 .ProseMirror p { margin: 0.5em 0; }
 .ProseMirror h1 { font-size: 1.75em; margin: 0.6em 0 0.3em; font-weight: 600; color: var(--vscode-editor-foreground); }
 .ProseMirror h2 { font-size: 1.4em; margin: 0.6em 0 0.3em; font-weight: 600; color: var(--vscode-editor-foreground); }

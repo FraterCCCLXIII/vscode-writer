@@ -73,6 +73,7 @@ export class OAIBYOKLMProvider extends AbstractOpenAICompatibleLMProvider {
 			id.includes('whisper') ||
 			id.includes('tts') ||
 			id.includes('dall-e') ||
+			id.startsWith('chatgpt-image') ||	// image-generation models (not chat)
 			id.includes('davinci') ||
 			id.includes('babbage') ||
 			id.includes('ada-002') ||

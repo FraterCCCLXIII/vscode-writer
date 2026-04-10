@@ -19,7 +19,7 @@ import { IChatEndpoint, IEmbeddingsEndpoint } from '../../../platform/networking
 import { Emitter, Event } from '../../../util/vs/base/common/event';
 import { Disposable } from '../../../util/vs/base/common/lifecycle';
 import { IInstantiationService } from '../../../util/vs/platform/instantiation/common/instantiation';
-import { isStandaloneByokChatFromProduct } from '../../byok/common/standaloneByokProduct';
+import { isStandaloneThirdPartyChatFromProduct } from '../../../platform/authentication/common/standaloneThirdPartyChatProduct';
 
 
 export class ProductionEndpointProvider extends Disposable implements IEndpointProvider {
@@ -28,6 +28,10 @@ export class ProductionEndpointProvider extends Disposable implements IEndpointP
 
 	private readonly _onDidModelsRefresh = this._register(new Emitter<void>());
 	readonly onDidModelsRefresh: Event<void> = this._onDidModelsRefresh.event;
+
+	notifyThirdPartyLanguageModelsChanged(): void {
+		this._onDidModelsRefresh.fire();
+	}
 
 	private _chatEndpoints: Map<string, IChatEndpoint> = new Map();
 	private _embeddingEndpoints: Map<string, IEmbeddingsEndpoint> = new Map();
@@ -65,7 +69,7 @@ export class ProductionEndpointProvider extends Disposable implements IEndpointP
 	}
 
 	/**
-	 * Known BYOK / third-party vendors (must not use `selectChatModels({})` — that re-enters the Copilot
+	 * Known third-party `vscode.lm` vendors (must not use `selectChatModels({})` — that re-enters the Copilot
 	 * `copilot` LM provider while it is building the model list).
 	 */
 	private static readonly _thirdPartyLmVendors = [
@@ -73,7 +77,7 @@ export class ProductionEndpointProvider extends Disposable implements IEndpointP
 	] as const;
 
 	/**
-	 * Third-party / BYOK models registered via VS Code's Language Model API. Same idea as Roo Code:
+	 * Third-party models registered via VS Code's Language Model API. Same idea as Roo Code:
 	 * aggregate OpenAI-compatible and other local/API models into the endpoint layer when CAPI is empty.
 	 */
 	private async _extensionContributedEndpointsFromVsCodeLm(): Promise<IChatEndpoint[]> {
@@ -103,8 +107,8 @@ export class ProductionEndpointProvider extends Disposable implements IEndpointP
 	}
 
 	/**
-	 * When CAPI returns no chat models (e.g. standalone BYOK + empty stub token), family resolution for
-	 * `copilot-base` / `copilot-fast` fails. Prefer an OpenAI BYOK model, else any non-Copilot LM.
+	 * When CAPI returns no chat models (e.g. standalone third-party chat + empty stub token), family resolution for
+	 * `copilot-base` / `copilot-fast` fails. Prefer an OpenAI API-key model, else any non-Copilot LM.
 	 */
 	private async _selectStandaloneByokLanguageModel(): Promise<LanguageModelChat | undefined> {
 		try {
@@ -116,14 +120,14 @@ export class ProductionEndpointProvider extends Disposable implements IEndpointP
 				}
 			}
 		} catch (e) {
-			this._logService.warn(`Standalone BYOK: could not select a language model: ${e}`);
+			this._logService.warn(`Standalone third-party chat: could not select a language model: ${e}`);
 		}
 		return undefined;
 	}
 
 	/**
 	 * The workbench model picker can surface the same OpenAI model id under `vendor: copilot` (CAPI manifest)
-	 * while BYOK registers it under `openai`. In standalone BYOK we must not route those through CopilotChatEndpoint.
+	 * while the OpenAI vendor registers it under `openai`. In standalone third-party chat we must not route those through CopilotChatEndpoint.
 	 */
 	private async _findThirdPartyLmMatchingCopilotPickerModel(copilotPickerModel: LanguageModelChat): Promise<LanguageModelChat | undefined> {
 		const wantId = copilotPickerModel.id;
@@ -153,7 +157,7 @@ export class ProductionEndpointProvider extends Disposable implements IEndpointP
 				}
 			}
 		} catch (e) {
-			this._logService.warn(`Standalone BYOK: could not match third-party LM for copilot-picker model: ${e}`);
+			this._logService.warn(`Standalone third-party chat: could not match third-party LM for copilot-picker model: ${e}`);
 		}
 		return undefined;
 	}
@@ -167,10 +171,10 @@ export class ProductionEndpointProvider extends Disposable implements IEndpointP
 				return this.getOrCreateChatEndpointInstance(modelMetadata!);
 			} catch (err) {
 				const family = requestOrFamilyOrModel;
-				if (isStandaloneByokChatFromProduct() && (family === 'copilot-base' || family === 'copilot-fast')) {
+				if (isStandaloneThirdPartyChatFromProduct() && (family === 'copilot-base' || family === 'copilot-fast')) {
 					const lm = await this._selectStandaloneByokLanguageModel();
 					if (lm) {
-						this._logService.info(`Standalone BYOK: using '${lm.vendor}/${lm.id}' for chat family '${family}' (no CAPI model list).`);
+						this._logService.info(`Standalone third-party chat: using '${lm.vendor}/${lm.id}' for chat family '${family}' (no CAPI model list).`);
 						return this._instantiationService.createInstance(ExtensionContributedChatEndpoint, lm);
 					}
 				}
@@ -197,10 +201,10 @@ export class ProductionEndpointProvider extends Disposable implements IEndpointP
 			}
 		}
 
-		if (isStandaloneByokChatFromProduct()) {
+		if (isStandaloneThirdPartyChatFromProduct()) {
 			const thirdParty = await this._findThirdPartyLmMatchingCopilotPickerModel(model);
 			if (thirdParty) {
-				this._logService.info(`Standalone BYOK: routing picker model '${model.vendor}/${model.id}' to third-party LM '${thirdParty.vendor}/${thirdParty.id}'.`);
+				this._logService.info(`Standalone third-party chat: routing picker model '${model.vendor}/${model.id}' to third-party LM '${thirdParty.vendor}/${thirdParty.id}'.`);
 				return this._instantiationService.createInstance(ExtensionContributedChatEndpoint, thirdParty);
 			}
 		}
@@ -236,14 +240,14 @@ export class ProductionEndpointProvider extends Disposable implements IEndpointP
 		const models: IChatModelInformation[] = await this._modelFetcher.getAllChatModels();
 		const capiEndpoints = models.map(model => this.getOrCreateChatEndpointInstance(model));
 
-		if (isStandaloneByokChatFromProduct()) {
-			// In standalone BYOK mode there is no real GitHub Copilot session. All CAPI endpoints would be
-			// blocked in chatMLFetcher anyway (see standalone-byok guard there). Return ONLY extension-contributed
-			// (BYOK / local) endpoints so the model picker never surfaces unusable CAPI models.
+		if (isStandaloneThirdPartyChatFromProduct()) {
+			// In standalone third-party chat mode there is no real GitHub Copilot session. All CAPI endpoints would be
+			// blocked in chatMLFetcher anyway (see third-party-only guard there). Return ONLY extension-contributed
+			// (API key / local) endpoints so the model picker never surfaces unusable CAPI models.
 			return await this._extensionContributedEndpointsFromVsCodeLm();
 		}
 
-		/** No CAPI list: merge models from VS Code LM API (OpenAI BYOK, Ollama, etc.). */
+		/** No CAPI list: merge models from VS Code LM API (OpenAI API key, Ollama, etc.). */
 		if (models.length === 0) {
 			const extra = await this._extensionContributedEndpointsFromVsCodeLm();
 			const seen = new Set(capiEndpoints.map(e => e.model));

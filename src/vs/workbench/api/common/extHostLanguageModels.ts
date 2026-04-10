@@ -375,7 +375,7 @@ export class ExtHostLanguageModels implements ExtHostLanguageModelsShape {
 				break;
 			}
 		}
-		// Standalone BYOK and other vendors: any model marked default for Chat (e.g. openai as workbench default).
+		// Standalone third-party chat and other vendors: any model marked default for Chat (e.g. openai as workbench default).
 		if (!defaultModelId) {
 			for (const [modelIdentifier, modelData] of this._localModels) {
 				if (isChatDefault(modelData)) {

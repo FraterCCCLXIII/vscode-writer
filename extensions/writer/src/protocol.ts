@@ -43,4 +43,8 @@ export type ToWebview =
 	| { type: 'inlineAiError'; message: string }
 	| { type: 'pathsResolved'; map: Record<string, string> }
 	| { type: 'imageSaved'; markdownPath: string; webviewSrc: string; alt: string }
-	| { type: 'imageSaveError'; message: string };
+	| { type: 'imageSaveError'; message: string }
+	| {
+		type: 'diagnostics';
+		items: { message: string; severity: number; text: string }[];
+	};

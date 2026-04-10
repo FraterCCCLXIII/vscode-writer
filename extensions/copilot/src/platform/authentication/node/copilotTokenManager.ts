@@ -45,7 +45,7 @@ export function createStaticGitHubTokenProvider(): (() => string) | undefined {
 	const pat = process.env.GITHUB_PAT;
 	const oauthToken = process.env.GITHUB_OAUTH_TOKEN;
 
-	// In automation scenarios, NoAuth/BYOK-only scenarios are expected to not have any tokens set.
+	// In automation scenarios, NoAuth / third-party-only scenarios are expected to not have any tokens set.
 	if (isScenarioAutomation && !pat && !oauthToken) {
 		return undefined;
 	}
@@ -76,7 +76,7 @@ export function getOrCreateTestingCopilotTokenManager(deviceId: string): SyncDes
 		return new SyncDescriptor(FixedCopilotTokenManager, [process.env.GITHUB_PAT]);
 	}
 
-	// In automation scenarios, NoAuth/BYOK-only scenarios are expected to not have any tokens set.
+	// In automation scenarios, NoAuth / third-party-only scenarios are expected to not have any tokens set.
 	if (isScenarioAutomation) {
 		return new SyncDescriptor(CopilotTokenManagerFromDeviceId, [deviceId]);
 	}

@@ -39,7 +39,7 @@ import { isBoolean, isDefined, isNumber, isString, isStringArray } from '../../.
 import { IInstantiationService } from '../../../util/vs/platform/instantiation/common/instantiation';
 import { ChatLocation as ApiChatLocation, ExtensionMode } from '../../../vscodeTypes';
 import { copilotPlanForErrorMessages } from '../../byok/common/copilotPlanForErrors';
-import { isStandaloneByokChatFromProduct } from '../../byok/common/standaloneByokProduct';
+import { isStandaloneThirdPartyChatFromProduct } from '../../../platform/authentication/common/standaloneThirdPartyChatProduct';
 import type { LMResponsePart } from '../../byok/common/byokProvider';
 import { IExtensionContribution } from '../../common/contributions';
 import { PromptRenderer } from '../../prompts/node/base/promptRenderer';
@@ -223,7 +223,7 @@ export class LanguageModelAccess extends Disposable implements IExtensionContrib
 		};
 		this._register(vscode.lm.registerLanguageModelChatProvider('copilot', provider));
 		this._register(this._authenticationService.onDidAuthenticationChange(() => {
-			if (!this._authenticationService.anyGitHubSession && !isStandaloneByokChatFromProduct()) {
+			if (!this._authenticationService.anyGitHubSession && !isStandaloneThirdPartyChatFromProduct()) {
 				this._currentModels = [];
 			}
 			// Auth changed which means models could've changed. Fire the event
@@ -420,7 +420,7 @@ export class LanguageModelAccess extends Disposable implements IExtensionContrib
 		// In standalone BYOK mode, CAPI endpoints are unusable (no real GitHub session).
 		// If we found a CAPI endpoint in the cache (from a race at startup or stale list),
 		// do a fresh lookup that prioritises extension-contributed (BYOK) endpoints.
-		if (cached && !cached.isExtensionContributed && isStandaloneByokChatFromProduct()) {
+		if (cached && !cached.isExtensionContributed && isStandaloneThirdPartyChatFromProduct()) {
 			const freshEndpoints = await this._endpointProvider.getAllChatEndpoints();
 			const byok = freshEndpoints.find(e => e.model === resolvedId && e.isExtensionContributed);
 			if (byok) {

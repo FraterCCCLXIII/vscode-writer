@@ -59,6 +59,8 @@ class MockEndpointProvider implements IEndpointProvider {
 	declare readonly _serviceBrand: undefined;
 	readonly onDidModelsRefresh = Event.None;
 
+	notifyThirdPartyLanguageModelsChanged(): void { }
+
 	constructor(private readonly endpoints: IChatEndpoint[]) { }
 
 	async getAllChatEndpoints(): Promise<IChatEndpoint[]> {
@@ -95,6 +97,10 @@ class RefreshableMockEndpointProvider implements IEndpointProvider {
 	}
 
 	fireRefresh(): void {
+		this._onDidModelsRefresh.fire();
+	}
+
+	notifyThirdPartyLanguageModelsChanged(): void {
 		this._onDidModelsRefresh.fire();
 	}
 
