@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
@@ -12,13 +12,20 @@ import Placeholder from '@tiptap/extension-placeholder';
 import Underline from '@tiptap/extension-underline';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
+import Table from '@tiptap/extension-table';
+import TableRow from '@tiptap/extension-table-row';
+import TableCell from '@tiptap/extension-table-cell';
+import TableHeader from '@tiptap/extension-table-header';
+import TextAlign from '@tiptap/extension-text-align';
 import { marked } from 'marked';
-import TurndownService from 'turndown';
 import { Toolbar } from './toolbar';
 import GlobalDragHandle from './global-drag-handle';
 import { SelectionBubbleMenu } from './SelectionBubbleMenu';
 import { InlineAiPanel } from './InlineAiPanel';
 import { WRITER_THEME_STYLES } from './writerThemeStyles';
+import { WriterImage } from './writerImage';
+import { augmentImageHtml, extractImgSrcsFromHtml } from './htmlImageHelpers';
+import { writerTurndown } from './turndownWriter';
 
 type VsCodeApi = { postMessage: (msg: unknown) => void };
 
@@ -29,7 +36,10 @@ type HostToWebview =
 	| { type: 'documentChanged'; format: 'rtf'; payload: { plainText: string }; resource: string }
 	| { type: 'inlineAiDelta'; text: string }
 	| { type: 'inlineAiDone' }
-	| { type: 'inlineAiError'; message: string };
+	| { type: 'inlineAiError'; message: string }
+	| { type: 'pathsResolved'; map: Record<string, string> }
+	| { type: 'imageSaved'; markdownPath: string; webviewSrc: string; alt: string }
+	| { type: 'imageSaveError'; message: string };
 
 function getVsCode(): VsCodeApi {
 	const w = globalThis as unknown as { __writerVsCodeApi?: VsCodeApi };
@@ -83,8 +93,6 @@ function markdownPlainFallbackAsHtml(md: string): string {
 		.join('');
 }
 
-const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
-
 function debounce(fn: () => void, ms: number): () => void {
 	let t: ReturnType<typeof setTimeout> | undefined;
 	return () => {
@@ -104,6 +112,10 @@ function WriterApp() {
 	const editorRef = useRef<Editor | null>(null);
 	/** False until host `init` / `documentChanged` has been applied — avoids empty doc overwriting disk on mount. */
 	const canPushToHostRef = useRef(false);
+	/** HTML waiting for `pathsResolved` before setContent. */
+	const pendingHtmlRef = useRef<string | null>(null);
+	const pendingRawMdRef = useRef<string | null>(null);
+	const imageInputRef = useRef<HTMLInputElement>(null);
 
 	const pushContent = useCallback(() => {
 		if (!canPushToHostRef.current) {
@@ -116,7 +128,7 @@ function WriterApp() {
 		}
 		if (formatRef.current === 'markdown') {
 			const html = ed.getHTML();
-			const md = turndown.turndown(html);
+			const md = writerTurndown.turndown(html);
 			vscode.postMessage({ type: 'contentChanged', format: 'markdown', markdown: md });
 		} else {
 			const plain = ed.getText();
@@ -148,11 +160,26 @@ function WriterApp() {
 		extensions: [
 			StarterKit.configure({
 				headingLevels: [1, 2, 3],
-				gapcursor: false,
+				gapcursor: true,
 				dropcursor: { color: 'var(--vscode-focusBorder)', width: 3 },
 			}),
 			Placeholder.configure({ placeholder: 'Start writing…' }),
 			Underline,
+			TextAlign.configure({
+				types: ['heading', 'paragraph'],
+				alignments: ['left', 'center', 'right'],
+				defaultAlignment: 'left',
+			}),
+			Table.configure({
+				resizable: true,
+			}),
+			TableRow,
+			TableHeader,
+			TableCell,
+			WriterImage.configure({
+				inline: false,
+				allowBase64: false,
+			}),
 			TaskList.configure({
 				HTMLAttributes: { class: 'writer-task-list' },
 			}),
@@ -193,10 +220,55 @@ function WriterApp() {
 			if (!msg || typeof msg !== 'object') {
 				return;
 			}
+
+			if (msg.type === 'pathsResolved') {
+				const pending = pendingHtmlRef.current;
+				const rawMd = pendingRawMdRef.current ?? '';
+				pendingHtmlRef.current = null;
+				pendingRawMdRef.current = null;
+				if (pending !== null && editorRef.current) {
+					const ed = editorRef.current;
+					const html = augmentImageHtml(pending, msg.map);
+					requestAnimationFrame(() => {
+						if (!ed || ed.isDestroyed) {
+							return;
+						}
+						ed.chain().setContent(html, false).run();
+						const sourceNonEmpty = rawMd.trim().length > 0;
+						const editorHasNoText = ed.getText().trim().length === 0;
+						if (sourceNonEmpty && editorHasNoText) {
+							ed.chain().setContent(markdownPlainFallbackAsHtml(rawMd), false).run();
+						}
+						queueMicrotask(() => {
+							canPushToHostRef.current = true;
+						});
+					});
+				}
+				return;
+			}
+
+			if (msg.type === 'imageSaved') {
+				const ed = editorRef.current;
+				if (ed && !ed.isDestroyed) {
+					// WriterImage adds dataMdSrc for Markdown paths; cast until command types are extended.
+					(ed.chain().focus() as unknown as { setImage: (o: Record<string, string>) => { run: () => boolean } }).setImage({
+						src: msg.webviewSrc,
+						alt: msg.alt || '',
+						dataMdSrc: msg.markdownPath,
+					}).run();
+				}
+				return;
+			}
+
+			if (msg.type === 'imageSaveError') {
+				window.alert(msg.message);
+				return;
+			}
+
 			if (msg.type !== 'init' && msg.type !== 'documentChanged') {
 				return;
 			}
-			// EditorContent attaches the ProseMirror view after paint; applying in the same tick can no-op.
+
 			requestAnimationFrame(() => {
 				const ed = editorRef.current;
 				if (!ed || ed.isDestroyed) {
@@ -207,13 +279,23 @@ function WriterApp() {
 					formatRef.current = 'markdown';
 					setDocFormat('markdown');
 					const md = msg.payload.markdown.replace(/^\uFEFF/, '');
-					const html = markdownToHtml(md);
+					let html = markdownToHtml(md);
+					const imgs = extractImgSrcsFromHtml(html);
+					if (imgs.length > 0) {
+						pendingHtmlRef.current = html;
+						pendingRawMdRef.current = md;
+						vscode.postMessage({ type: 'resolveImagePaths', paths: imgs });
+						return;
+					}
 					ed.chain().setContent(html, false).run();
 					const sourceNonEmpty = md.trim().length > 0;
 					const editorHasNoText = ed.getText().trim().length === 0;
 					if (sourceNonEmpty && editorHasNoText) {
 						ed.chain().setContent(markdownPlainFallbackAsHtml(md), false).run();
 					}
+					queueMicrotask(() => {
+						canPushToHostRef.current = true;
+					});
 				} else {
 					formatRef.current = 'rtf';
 					setDocFormat('rtf');
@@ -226,12 +308,13 @@ function WriterApp() {
 						html = markdownPlainFallbackAsHtml(plain);
 						ed.chain().setContent(html, false).run();
 					}
+					queueMicrotask(() => {
+						canPushToHostRef.current = true;
+					});
 				}
-				queueMicrotask(() => {
-					canPushToHostRef.current = true;
-				});
 			});
 		};
+
 		window.addEventListener('message', onMessage);
 		vscode.postMessage({ type: 'ready' });
 
@@ -268,6 +351,27 @@ function WriterApp() {
 		return () => window.removeEventListener('message', onStreamMessage);
 	}, [inlineAiOpen]);
 
+	const onImageFileChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		e.target.value = '';
+		if (!file || !vscodeRef.current) {
+			return;
+		}
+		const reader = new FileReader();
+		reader.onload = () => {
+			const dataUrl = reader.result as string;
+			const comma = dataUrl.indexOf(',');
+			const base64 = comma >= 0 ? dataUrl.slice(comma + 1) : '';
+			vscodeRef.current?.postMessage({
+				type: 'saveImage',
+				base64,
+				mimeType: file.type || 'image/png',
+				filenameHint: file.name,
+			});
+		};
+		reader.readAsDataURL(file);
+	}, []);
+
 	if (!editor) {
 		return null;
 	}
@@ -281,7 +385,19 @@ function WriterApp() {
 
 	return (
 		<div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', boxSizing: 'border-box' }}>
-			<Toolbar editor={editor} />
+			<input
+				ref={imageInputRef}
+				type="file"
+				accept="image/*"
+				style={{ display: 'none' }}
+				onChange={onImageFileChange}
+				aria-hidden
+			/>
+			<Toolbar
+				editor={editor}
+				format={docFormat}
+				onPickImage={() => imageInputRef.current?.click()}
+			/>
 			<div
 				className="writer-editor-scroll"
 				style={{

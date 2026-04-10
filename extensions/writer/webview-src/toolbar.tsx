@@ -6,18 +6,29 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Editor } from '@tiptap/core';
 import {
+	AlignCenter,
+	AlignLeft,
+	AlignRight,
+	ArrowDownFromLine,
+	ArrowLeftFromLine,
+	ArrowRightFromLine,
+	ArrowUpFromLine,
 	Bold,
 	CheckSquare,
+	Columns2,
 	Code,
 	Heading1,
 	Heading2,
 	Heading3,
+	ImagePlus,
 	Italic,
 	List,
 	ListOrdered,
 	Quote,
 	Redo2,
+	Rows2,
 	Strikethrough,
+	Table,
 	Type,
 	Underline,
 	Undo2,
@@ -25,6 +36,8 @@ import {
 
 type Props = {
 	editor: Editor;
+	format: 'markdown' | 'rtf';
+	onPickImage: () => void;
 };
 
 /** Sticky chrome: no horizontal padding here so the divider can span the full webview width. */
@@ -48,6 +61,29 @@ const toolbarRow: CSSProperties = {
 	gap: 2,
 	padding: '0 8px',
 	boxSizing: 'border-box',
+};
+
+const tableToolbarRow: CSSProperties = {
+	display: 'flex',
+	minHeight: 40,
+	maxWidth: '100%',
+	flexWrap: 'wrap',
+	alignItems: 'center',
+	justifyContent: 'center',
+	gap: 2,
+	padding: '4px 8px 8px',
+	boxSizing: 'border-box',
+	borderTop: '1px solid var(--vscode-editorWidget-border)',
+};
+
+const tableToolbarLabel: CSSProperties = {
+	fontSize: 11,
+	fontWeight: 600,
+	textTransform: 'uppercase',
+	letterSpacing: '0.04em',
+	color: 'var(--vscode-descriptionForeground)',
+	marginRight: 6,
+	flexShrink: 0,
 };
 
 /** Separate block so the rule is never inset by row padding (edge-to-edge separator). */
@@ -117,7 +153,9 @@ function ToolbarIconButton({
 	);
 }
 
-export function Toolbar({ editor }: Props) {
+export function Toolbar({ editor, format, onPickImage }: Props) {
+	const isMd = format === 'markdown';
+	const inTable = isMd && editor.isActive('table');
 	const [headingOpen, setHeadingOpen] = useState(false);
 	const headingWrapRef = useRef<HTMLDivElement>(null);
 
@@ -340,6 +378,48 @@ export function Toolbar({ editor }: Props) {
 				<div style={sep} />
 
 				<ToolbarIconButton
+					title="Align left"
+					active={editor.isActive({ textAlign: 'left' })}
+					onClick={() => editor.chain().focus().setTextAlign('left').run()}
+				>
+					<AlignLeft size={16} strokeWidth={2} />
+				</ToolbarIconButton>
+				<ToolbarIconButton
+					title="Align center"
+					active={editor.isActive({ textAlign: 'center' })}
+					onClick={() => editor.chain().focus().setTextAlign('center').run()}
+				>
+					<AlignCenter size={16} strokeWidth={2} />
+				</ToolbarIconButton>
+				<ToolbarIconButton
+					title="Align right"
+					active={editor.isActive({ textAlign: 'right' })}
+					onClick={() => editor.chain().focus().setTextAlign('right').run()}
+				>
+					<AlignRight size={16} strokeWidth={2} />
+				</ToolbarIconButton>
+
+				{isMd ? (
+					<>
+						<div style={sep} />
+						<ToolbarIconButton
+							title="Insert table"
+							active={false}
+							onClick={() =>
+								editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+							}
+						>
+							<Table size={16} strokeWidth={2} />
+						</ToolbarIconButton>
+						<ToolbarIconButton title="Insert image" active={false} onClick={onPickImage}>
+							<ImagePlus size={16} strokeWidth={2} />
+						</ToolbarIconButton>
+					</>
+				) : null}
+
+				<div style={sep} />
+
+				<ToolbarIconButton
 					title="Undo"
 					disabled={!editor.can().undo()}
 					onClick={() => editor.chain().focus().undo().run()}
@@ -354,6 +434,56 @@ export function Toolbar({ editor }: Props) {
 					<Redo2 size={16} strokeWidth={2} />
 				</ToolbarIconButton>
 			</div>
+
+			{inTable ? (
+				<div style={tableToolbarRow} role="toolbar" aria-label="Table">
+					<span style={tableToolbarLabel}>Table</span>
+					<ToolbarIconButton
+						title="Add row above"
+						disabled={!editor.can().addRowBefore()}
+						onClick={() => editor.chain().focus().addRowBefore().run()}
+					>
+						<ArrowUpFromLine size={16} strokeWidth={2} />
+					</ToolbarIconButton>
+					<ToolbarIconButton
+						title="Add row below"
+						disabled={!editor.can().addRowAfter()}
+						onClick={() => editor.chain().focus().addRowAfter().run()}
+					>
+						<ArrowDownFromLine size={16} strokeWidth={2} />
+					</ToolbarIconButton>
+					<ToolbarIconButton
+						title="Delete row"
+						disabled={!editor.can().deleteRow()}
+						onClick={() => editor.chain().focus().deleteRow().run()}
+					>
+						<Rows2 size={16} strokeWidth={2} />
+					</ToolbarIconButton>
+					<div style={sep} />
+					<ToolbarIconButton
+						title="Add column left"
+						disabled={!editor.can().addColumnBefore()}
+						onClick={() => editor.chain().focus().addColumnBefore().run()}
+					>
+						<ArrowLeftFromLine size={16} strokeWidth={2} />
+					</ToolbarIconButton>
+					<ToolbarIconButton
+						title="Add column right"
+						disabled={!editor.can().addColumnAfter()}
+						onClick={() => editor.chain().focus().addColumnAfter().run()}
+					>
+						<ArrowRightFromLine size={16} strokeWidth={2} />
+					</ToolbarIconButton>
+					<ToolbarIconButton
+						title="Delete column"
+						disabled={!editor.can().deleteColumn()}
+						onClick={() => editor.chain().focus().deleteColumn().run()}
+					>
+						<Columns2 size={16} strokeWidth={2} />
+					</ToolbarIconButton>
+				</div>
+			) : null}
+
 			<div style={bottomRule} aria-hidden="true" />
 		</div>
 	);

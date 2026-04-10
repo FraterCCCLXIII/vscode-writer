@@ -9,7 +9,9 @@ export type FromWebview =
 	| { type: 'contentChanged'; format: 'rtf'; plainText: string }
 	| { type: 'selectionChanged'; text: string }
 	| { type: 'inlineAiRequest'; prompt: string; selectionPlain: string; format: 'markdown' | 'rtf' }
-	| { type: 'inlineAiCancel' };
+	| { type: 'inlineAiCancel' }
+	| { type: 'resolveImagePaths'; paths: string[] }
+	| { type: 'saveImage'; base64: string; mimeType: string; filenameHint?: string };
 
 export type ToWebview =
 	| {
@@ -38,4 +40,7 @@ export type ToWebview =
 	}
 	| { type: 'inlineAiDelta'; text: string }
 	| { type: 'inlineAiDone' }
-	| { type: 'inlineAiError'; message: string };
+	| { type: 'inlineAiError'; message: string }
+	| { type: 'pathsResolved'; map: Record<string, string> }
+	| { type: 'imageSaved'; markdownPath: string; webviewSrc: string; alt: string }
+	| { type: 'imageSaveError'; message: string };

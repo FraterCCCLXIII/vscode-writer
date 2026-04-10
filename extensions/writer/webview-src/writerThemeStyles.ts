@@ -96,18 +96,28 @@ export const WRITER_THEME_STYLES = `
 	height: auto;
 }
 
+.ProseMirror .tableWrapper {
+	overflow-x: auto;
+	margin: 0.75em 0;
+}
 .ProseMirror table {
 	border-collapse: collapse;
 	width: 100%;
+	table-layout: fixed;
 }
 .ProseMirror th,
 .ProseMirror td {
 	border: 1px solid var(--vscode-editorWidget-border);
 	padding: 6px 10px;
+	vertical-align: top;
+	min-width: 4em;
 }
 .ProseMirror th {
 	background: var(--vscode-editor-inactiveSelectionBackground, var(--vscode-textCodeBlock-background));
 	font-weight: 600;
+}
+.ProseMirror .column-resize-handle {
+	background-color: var(--vscode-focusBorder);
 }
 
 /* TipTap placeholder — data-placeholder on empty block nodes */

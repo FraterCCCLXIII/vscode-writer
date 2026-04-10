@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { plainTextToRtf } from './rtfSerialize';
 import { rtfToPlainText } from './rtfImport';
@@ -35,6 +36,37 @@ function escapeHtmlAttr(value: string): string {
 	return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
+function mimeToExt(mime: string): string {
+	const m = mime.toLowerCase();
+	if (m.includes('png')) {
+		return 'png';
+	}
+	if (m.includes('jpeg') || m.includes('jpg')) {
+		return 'jpg';
+	}
+	if (m.includes('gif')) {
+		return 'gif';
+	}
+	if (m.includes('webp')) {
+		return 'webp';
+	}
+	if (m.includes('svg')) {
+		return 'svg';
+	}
+	return 'png';
+}
+
+function sanitizeBasename(name: string): string {
+	const s = name.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
+	return s || 'image';
+}
+
+function resolvePathRelativeToDocument(documentUri: vscode.Uri, relativePath: string): vscode.Uri {
+	const dir = path.dirname(documentUri.fsPath);
+	const resolved = path.normalize(path.join(dir, relativePath));
+	return vscode.Uri.file(resolved);
+}
+
 export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 	public static readonly viewType = 'vscode.writer.editor';
 
@@ -48,9 +80,14 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 		webviewPanel: vscode.WebviewPanel,
 		_token: vscode.CancellationToken,
 	): Promise<void> {
+		const localRoots = [vscode.Uri.joinPath(this._extensionUri, 'media')];
+		const wf = vscode.workspace.getWorkspaceFolder(document.uri);
+		if (wf) {
+			localRoots.push(wf.uri);
+		}
 		webviewPanel.webview.options = {
 			enableScripts: true,
-			localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, 'media')],
+			localResourceRoots: localRoots,
 		};
 
 		webviewPanel.webview.html = this._getHtml(webviewPanel.webview);
@@ -199,6 +236,64 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 				case 'inlineAiCancel':
 					inlineAiCts?.cancel();
 					break;
+				case 'resolveImagePaths': {
+					const map: Record<string, string> = {};
+					for (const p of message.paths) {
+						if (!p || p.startsWith('http') || p.startsWith('data:') || p.startsWith('vscode-webview-resource:')) {
+							continue;
+						}
+						try {
+							const abs = resolvePathRelativeToDocument(document.uri, p);
+							const stat = await vscode.workspace.fs.stat(abs);
+							if (stat.type === vscode.FileType.File) {
+								map[p] = webviewPanel.webview.asWebviewUri(abs).toString();
+							}
+						} catch {
+							// ignore missing or invalid paths
+						}
+					}
+					const msg: ToWebview = { type: 'pathsResolved', map };
+					void webviewPanel.webview.postMessage(msg);
+					break;
+				}
+				case 'saveImage': {
+					const wsFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+					if (!wsFolder) {
+						const err: ToWebview = {
+							type: 'imageSaveError',
+							message: 'Open a folder in the workspace to save images.',
+						};
+						void webviewPanel.webview.postMessage(err);
+						break;
+					}
+					try {
+						const mediaDir = vscode.Uri.joinPath(wsFolder.uri, 'Media');
+						await vscode.workspace.fs.createDirectory(mediaDir);
+						const ext = mimeToExt(message.mimeType);
+						const hint = message.filenameHint?.replace(/\.[^.]+$/, '') ?? 'image';
+						const base = sanitizeBasename(hint);
+						const filename = `${base}-${Date.now()}.${ext}`;
+						const fileUri = vscode.Uri.joinPath(mediaDir, filename);
+						const buffer = Buffer.from(message.base64, 'base64');
+						await vscode.workspace.fs.writeFile(fileUri, buffer);
+						const rel = path.relative(path.dirname(document.uri.fsPath), fileUri.fsPath).replace(/\\/g, '/');
+						const webviewSrc = webviewPanel.webview.asWebviewUri(fileUri).toString();
+						const ok: ToWebview = {
+							type: 'imageSaved',
+							markdownPath: rel,
+							webviewSrc,
+							alt: '',
+						};
+						void webviewPanel.webview.postMessage(ok);
+					} catch (e) {
+						const err: ToWebview = {
+							type: 'imageSaveError',
+							message: `Could not save image: ${(e as Error)?.message ?? e}`,
+						};
+						void webviewPanel.webview.postMessage(err);
+					}
+					break;
+				}
 				default:
 					break;
 			}
