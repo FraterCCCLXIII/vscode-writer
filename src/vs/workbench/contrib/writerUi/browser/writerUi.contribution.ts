@@ -4,12 +4,15 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { localize, localize2 } from '../../../../nls.js';
-import { MenuRegistry, MenuId } from '../../../../platform/actions/common/actions.js';
+import { Action2, MenuRegistry, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
+import { Categories } from '../../../../platform/action/common/actionCommonCategories.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { Extensions, IConfigurationRegistry } from '../../../../platform/configuration/common/configurationRegistry.js';
 import { ContextKeyExpr } from '../../../../platform/contextkey/common/contextkey.js';
+import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
-import { IsSessionsWindowContext } from '../../../common/contextkeys.js';
-import { LayoutSettings } from '../../../services/layout/browser/layoutService.js';
+import { InEditorZenModeContext, IsSessionsWindowContext } from '../../../common/contextkeys.js';
+import { EditorTabsMode, LayoutSettings } from '../../../services/layout/browser/layoutService.js';
 
 /**
  * Writer product defaults and View menu entries. Not an extension — not listed in Extensions
@@ -54,4 +57,38 @@ MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
 			mnemonicTitle: localize({ key: 'miBreadcrumbs2', comment: ['&& denotes a mnemonic'] }, "&&Breadcrumbs"),
 		},
 	},
+});
+
+const editorTabsVisibleContext = ContextKeyExpr.notEquals(`config.${LayoutSettings.EDITOR_TABS_MODE}`, EditorTabsMode.NONE);
+
+registerAction2(class ToggleOpenEditorTabsAction extends Action2 {
+	static readonly ID = 'workbench.action.toggleOpenEditorTabs';
+
+	constructor() {
+		super({
+			id: ToggleOpenEditorTabsAction.ID,
+			title: localize2('toggleOpenEditorTabs', "Open Editor Tabs"),
+			category: Categories.View,
+			f1: true,
+			precondition: ContextKeyExpr.and(IsSessionsWindowContext.negate(), InEditorZenModeContext.negate()),
+			toggled: {
+				condition: editorTabsVisibleContext,
+				title: localize('openEditorTabsMenuTitle', "Open Editor Tabs"),
+				mnemonicTitle: localize({ key: 'miOpenEditorTabs', comment: ['&& denotes a mnemonic'] }, "Open &&Editor Tabs"),
+			},
+			menu: [{
+				id: MenuId.MenubarViewMenu,
+				group: '2_appearance',
+				order: 5,
+				when: ContextKeyExpr.and(IsSessionsWindowContext.negate(), InEditorZenModeContext.negate()),
+			}],
+		});
+	}
+
+	run(accessor: ServicesAccessor): Promise<void> {
+		const configurationService = accessor.get(IConfigurationService);
+		const current = configurationService.getValue<string>(LayoutSettings.EDITOR_TABS_MODE);
+		const next = current === EditorTabsMode.NONE ? EditorTabsMode.MULTIPLE : EditorTabsMode.NONE;
+		return configurationService.updateValue(LayoutSettings.EDITOR_TABS_MODE, next);
+	}
 });
