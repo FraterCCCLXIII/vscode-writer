@@ -34,9 +34,9 @@ const panel: CSSProperties = {
 	display: 'flex',
 	flexDirection: 'column',
 	borderRadius: 10,
-	border: '1px solid var(--vscode-editorWidget-border, rgba(128,128,128,.35))',
+	border: '1px solid var(--vscode-editorWidget-border)',
 	background: 'var(--vscode-editor-background)',
-	boxShadow: '0 8px 24px rgba(0,0,0,.28)',
+	boxShadow: '0 8px 24px var(--vscode-widget-shadow)',
 	overflow: 'hidden',
 };
 
@@ -160,7 +160,7 @@ export function InlineAiPanel({
 			<div
 				style={{
 					padding: '10px 12px',
-					borderBottom: '1px solid var(--vscode-editorWidget-border, rgba(128,128,128,.25))',
+					borderBottom: '1px solid var(--vscode-editorWidget-border)',
 					fontSize: 12,
 					fontWeight: 600,
 					color: 'var(--vscode-editor-foreground)',
@@ -187,8 +187,8 @@ export function InlineAiPanel({
 							fontFamily: 'var(--vscode-font-family)',
 							fontSize: 'var(--vscode-font-size)',
 							color: 'var(--vscode-editor-foreground)',
-							background: 'var(--vscode-input-background, var(--vscode-editor-background))',
-							border: '1px solid var(--vscode-input-border, var(--vscode-editorWidget-border))',
+							background: 'var(--vscode-input-background)',
+							border: '1px solid var(--vscode-input-border)',
 							borderRadius: 6,
 							padding: 8,
 						}}
@@ -235,8 +235,8 @@ export function InlineAiPanel({
 							padding: '6px 14px',
 							borderRadius: 6,
 							border: 'none',
-							background: 'var(--vscode-button-secondaryBackground, rgba(128,128,128,.2))',
-							color: 'var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground))',
+							background: 'var(--vscode-button-secondaryBackground)',
+							color: 'var(--vscode-button-secondaryForeground)',
 							cursor: canApply ? 'pointer' : 'not-allowed',
 							opacity: canApply ? 1 : 0.45,
 						}}
@@ -259,7 +259,7 @@ export function InlineAiPanel({
 					</button>
 				</div>
 				{error ? (
-					<div style={{ fontSize: 12, color: 'var(--vscode-errorForeground, #f14c4c)' }} role="alert">
+					<div style={{ fontSize: 12, color: 'var(--vscode-errorForeground)' }} role="alert">
 						{error}
 					</div>
 				) : null}
@@ -272,7 +272,7 @@ export function InlineAiPanel({
 						lineHeight: 1.5,
 						padding: 8,
 						borderRadius: 6,
-						background: 'var(--vscode-textCodeBlock-background, rgba(128,128,128,.08))',
+						background: 'var(--vscode-textCodeBlock-background)',
 						color: 'var(--vscode-editor-foreground)',
 						whiteSpace: 'pre-wrap',
 					}}

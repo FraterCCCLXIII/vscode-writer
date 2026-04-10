@@ -130,11 +130,12 @@ export abstract class PaneComposite<MementoType extends object = object> extends
 			}
 		}
 
+		// View-specific overflow first (e.g. Explorer refresh/collapse), then container items (e.g. Views visibility toggles).
 		if (menuActions.length && viewPaneActions.length) {
 			return [
-				...menuActions,
+				...viewPaneActions,
 				new Separator(),
-				...viewPaneActions
+				...menuActions
 			];
 		}
 

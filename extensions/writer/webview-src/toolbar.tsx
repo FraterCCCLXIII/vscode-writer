@@ -27,35 +27,42 @@ type Props = {
 	editor: Editor;
 };
 
+/** Sticky chrome: no horizontal padding here so the divider can span the full webview width. */
 const shell: CSSProperties = {
 	position: 'sticky',
 	top: 0,
 	zIndex: 40,
-	display: 'flex',
-	minHeight: 48,
 	width: '100%',
 	flexShrink: 0,
-	alignItems: 'center',
-	justifyContent: 'center',
-	borderBottom: '1px solid var(--vscode-editorWidget-border, rgba(128,128,128,.35))',
+	boxSizing: 'border-box',
 	background: 'var(--vscode-editor-background)',
-	padding: '0 8px',
 };
 
-const inner: CSSProperties = {
+const toolbarRow: CSSProperties = {
 	display: 'flex',
+	minHeight: 48,
 	maxWidth: '100%',
 	flexWrap: 'wrap',
 	alignItems: 'center',
 	justifyContent: 'center',
 	gap: 2,
+	padding: '0 8px',
+	boxSizing: 'border-box',
+};
+
+/** Separate block so the rule is never inset by row padding (edge-to-edge separator). */
+const bottomRule: CSSProperties = {
+	width: '100%',
+	height: 1,
+	flexShrink: 0,
+	background: 'var(--vscode-editorWidget-border)',
 };
 
 const sep: CSSProperties = {
 	width: 1,
 	height: 24,
 	margin: '0 4px',
-	background: 'var(--vscode-editorWidget-border, rgba(128,128,128,.35))',
+	background: 'var(--vscode-editorWidget-border)',
 	flexShrink: 0,
 };
 
@@ -69,7 +76,7 @@ function iconBtn(active: boolean): CSSProperties {
 		justifyContent: 'center',
 		border: 'none',
 		borderRadius: 6,
-		background: active ? 'var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.2))' : 'transparent',
+		background: active ? 'var(--vscode-toolbar-hoverBackground)' : 'transparent',
 		color: 'var(--vscode-editor-foreground)',
 		cursor: 'pointer',
 		transition: 'background-color 0.15s ease',
@@ -158,9 +165,9 @@ export function Toolbar({ editor }: Props) {
 		minWidth: 176,
 		padding: '4px 0',
 		borderRadius: 6,
-		border: '1px solid var(--vscode-editorWidget-border, rgba(128,128,128,.35))',
+		border: '1px solid var(--vscode-editorWidget-border)',
 		background: 'var(--vscode-editor-background)',
-		boxShadow: '0 4px 16px rgba(0,0,0,.24)',
+		boxShadow: '0 4px 16px var(--vscode-widget-shadow)',
 		zIndex: 50,
 	};
 
@@ -188,7 +195,7 @@ export function Toolbar({ editor }: Props) {
 
 	return (
 		<div style={shell}>
-			<div style={inner} role="toolbar" aria-label="Formatting">
+			<div style={toolbarRow} role="toolbar" aria-label="Formatting">
 				<div ref={headingWrapRef} style={{ position: 'relative' }}>
 					<button
 						type="button"
@@ -347,6 +354,7 @@ export function Toolbar({ editor }: Props) {
 					<Redo2 size={16} strokeWidth={2} />
 				</ToolbarIconButton>
 			</div>
+			<div style={bottomRule} aria-hidden="true" />
 		</div>
 	);
 }

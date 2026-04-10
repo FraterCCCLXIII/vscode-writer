@@ -18,9 +18,9 @@ const bar: CSSProperties = {
 	gap: 2,
 	padding: '4px 6px',
 	borderRadius: 8,
-	border: '1px solid var(--vscode-editorWidget-border, rgba(128,128,128,.35))',
+	border: '1px solid var(--vscode-editorWidget-border)',
 	background: 'var(--vscode-editor-background)',
-	boxShadow: '0 4px 12px rgba(0,0,0,.2)',
+	boxShadow: '0 4px 12px var(--vscode-widget-shadow)',
 	pointerEvents: 'auto',
 };
 
@@ -51,7 +51,7 @@ function Btn({
 				justifyContent: 'center',
 				border: 'none',
 				borderRadius: 6,
-				background: hover ? 'var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.2))' : 'transparent',
+				background: hover ? 'var(--vscode-toolbar-hoverBackground)' : 'transparent',
 				color: 'var(--vscode-editor-foreground)',
 				cursor: 'pointer',
 				pointerEvents: 'auto',
@@ -66,7 +66,7 @@ const sep: CSSProperties = {
 	width: 1,
 	height: 20,
 	margin: '0 4px',
-	background: 'var(--vscode-editorWidget-border, rgba(128,128,128,.35))',
+	background: 'var(--vscode-editorWidget-border)',
 	flexShrink: 0,
 };
 

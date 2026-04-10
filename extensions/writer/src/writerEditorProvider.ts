@@ -277,7 +277,8 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<title>Writer</title>
 	<style>
-		html, body, #root { height: 100%; margin: 0; }
+		/* Reset VS Code-injected webview defaults (pre/index.html @layer vscode-default uses body { padding: 0 20px }). */
+		html, body, #root { height: 100%; margin: 0; padding: 0; }
 		body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-editor-foreground); background: var(--vscode-editor-background); }
 	</style>
 </head>

@@ -291,6 +291,7 @@ import './contrib/webview/browser/webview.contribution.js';
 import './contrib/webviewPanel/browser/webviewPanel.contribution.js';
 import './contrib/webviewView/browser/webviewView.contribution.js';
 import './contrib/customEditor/browser/customEditor.contribution.js';
+import './contrib/writerUi/browser/writerUi.contribution.js';
 
 // External Uri Opener
 import './contrib/externalUriOpener/common/externalUriOpener.contribution.js';

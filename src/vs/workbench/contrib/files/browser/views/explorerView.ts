@@ -31,7 +31,7 @@ import { ExplorerDelegate, ExplorerDataSource, FilesRenderer, ICompressedNavigat
 import { IThemeService, IFileIconTheme } from '../../../../../platform/theme/common/themeService.js';
 import { IWorkbenchThemeService } from '../../../../services/themes/common/workbenchThemeService.js';
 import { ITreeContextMenuEvent, TreeVisibility } from '../../../../../base/browser/ui/tree/tree.js';
-import { MenuId, Action2, registerAction2 } from '../../../../../platform/actions/common/actions.js';
+import { MenuId, Action2, MenuRegistry, registerAction2, ISubmenuItem } from '../../../../../platform/actions/common/actions.js';
 import { ITelemetryService } from '../../../../../platform/telemetry/common/telemetry.js';
 import { ExplorerItem, NewExplorerItem } from '../../common/explorerModel.js';
 import { ResourceLabels } from '../../../../browser/labels.js';
@@ -1013,51 +1013,36 @@ const CanCreateContext = ContextKeyExpr.or(
 	ContextKeyExpr.and(ExplorerFolderContext.toNegated(), ExplorerResourceParentReadOnlyContext.toNegated())
 );
 
-registerAction2(class extends Action2 {
-	constructor() {
-		super({
-			id: 'workbench.files.action.createFileFromExplorer',
-			title: nls.localize('createNewFile', "New File..."),
-			f1: false,
-			icon: Codicon.newFile,
-			precondition: CanCreateContext,
-			menu: {
-				id: MenuId.ViewTitle,
-				group: 'navigation',
-				when: ContextKeyExpr.equals('view', VIEW_ID),
-				order: 10
-			}
-		});
-	}
+const explorerNewMenu = new MenuId('explorer.newMenu');
 
-	run(accessor: ServicesAccessor): void {
-		const commandService = accessor.get(ICommandService);
-		commandService.executeCommand(NEW_FILE_COMMAND_ID);
-	}
+MenuRegistry.appendMenuItem(explorerNewMenu, {
+	command: {
+		id: NEW_FILE_COMMAND_ID,
+		title: nls.localize('createNewFile', "New File...")
+	},
+	group: '1_new',
+	order: 1,
+	when: CanCreateContext
 });
 
-registerAction2(class extends Action2 {
-	constructor() {
-		super({
-			id: 'workbench.files.action.createFolderFromExplorer',
-			title: nls.localize('createNewFolder', "New Folder..."),
-			f1: false,
-			icon: Codicon.newFolder,
-			precondition: CanCreateContext,
-			menu: {
-				id: MenuId.ViewTitle,
-				group: 'navigation',
-				when: ContextKeyExpr.equals('view', VIEW_ID),
-				order: 20
-			}
-		});
-	}
-
-	run(accessor: ServicesAccessor): void {
-		const commandService = accessor.get(ICommandService);
-		commandService.executeCommand(NEW_FOLDER_COMMAND_ID);
-	}
+MenuRegistry.appendMenuItem(explorerNewMenu, {
+	command: {
+		id: NEW_FOLDER_COMMAND_ID,
+		title: nls.localize('createNewFolder', "New Folder...")
+	},
+	group: '1_new',
+	order: 2,
+	when: CanCreateContext
 });
+
+MenuRegistry.appendMenuItem(MenuId.ViewTitle, {
+	submenu: explorerNewMenu,
+	title: nls.localize2('explorerNew', "New..."),
+	icon: Codicon.add,
+	group: 'navigation',
+	order: 10,
+	when: ContextKeyExpr.equals('view', VIEW_ID),
+} satisfies ISubmenuItem);
 
 registerAction2(class extends Action2 {
 	constructor() {
@@ -1068,7 +1053,7 @@ registerAction2(class extends Action2 {
 			icon: Codicon.refresh,
 			menu: {
 				id: MenuId.ViewTitle,
-				group: 'navigation',
+				group: '1_explorerOverflow',
 				when: ContextKeyExpr.equals('view', VIEW_ID),
 				order: 30,
 			},
@@ -1096,7 +1081,7 @@ registerAction2(class extends Action2 {
 			icon: Codicon.collapseAll,
 			menu: {
 				id: MenuId.ViewTitle,
-				group: 'navigation',
+				group: '1_explorerOverflow',
 				when: ContextKeyExpr.equals('view', VIEW_ID),
 				order: 40
 			},

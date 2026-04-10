@@ -18,6 +18,7 @@ import { Toolbar } from './toolbar';
 import GlobalDragHandle from './global-drag-handle';
 import { SelectionBubbleMenu } from './SelectionBubbleMenu';
 import { InlineAiPanel } from './InlineAiPanel';
+import { WRITER_THEME_STYLES } from './writerThemeStyles';
 
 type VsCodeApi = { postMessage: (msg: unknown) => void };
 
@@ -148,7 +149,7 @@ function WriterApp() {
 			StarterKit.configure({
 				headingLevels: [1, 2, 3],
 				gapcursor: false,
-				dropcursor: { color: '#64748b', width: 3 },
+				dropcursor: { color: 'var(--vscode-focusBorder)', width: 3 },
 			}),
 			Placeholder.configure({ placeholder: 'Start writing…' }),
 			Underline,
@@ -279,84 +280,49 @@ function WriterApp() {
 	}
 
 	return (
-		<div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+		<div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', boxSizing: 'border-box' }}>
 			<Toolbar editor={editor} />
 			<div
 				className="writer-editor-scroll"
 				style={{
 					flex: 1,
+					minHeight: 0,
 					overflow: 'auto',
-					padding: inlineAiOpen ? '12px 24px 220px' : '12px 24px 48px',
-					maxWidth: '52rem',
-					margin: '0 auto',
 					width: '100%',
 					boxSizing: 'border-box',
-					position: 'relative',
 				}}
 			>
-				<EditorContent editor={editor} />
-				<SelectionBubbleMenu editor={editor} onAskAi={() => setInlineAiOpen(true)} />
-				<InlineAiPanel
-					open={inlineAiOpen}
-					onClose={() => setInlineAiOpen(false)}
-					editor={editor}
-					format={docFormat}
-					vscode={vscodeApi}
-					output={inlineAiOutput}
-					busy={inlineAiBusy}
-					error={inlineAiError}
-					onRequestStart={() => {
-						setInlineAiOutput('');
-						setInlineAiError(null);
-						setInlineAiBusy(true);
+				<div
+					style={{
+						maxWidth: '52rem',
+						margin: '0 auto',
+						width: '100%',
+						boxSizing: 'border-box',
+						position: 'relative',
+						padding: inlineAiOpen ? '12px 24px 220px' : '12px 24px 48px',
 					}}
-					onCancelStream={() => setInlineAiBusy(false)}
-				/>
+				>
+					<EditorContent editor={editor} />
+					<InlineAiPanel
+						open={inlineAiOpen}
+						onClose={() => setInlineAiOpen(false)}
+						editor={editor}
+						format={docFormat}
+						vscode={vscodeApi}
+						output={inlineAiOutput}
+						busy={inlineAiBusy}
+						error={inlineAiError}
+						onRequestStart={() => {
+							setInlineAiOutput('');
+							setInlineAiError(null);
+							setInlineAiBusy(true);
+						}}
+						onCancelStream={() => setInlineAiBusy(false)}
+					/>
+				</div>
+				<SelectionBubbleMenu editor={editor} onAskAi={() => setInlineAiOpen(true)} />
 			</div>
-			<style>{`
-				.ProseMirror { outline: none; min-height: 200px; line-height: 1.65; color: var(--vscode-editor-foreground); }
-				.ProseMirror p { margin: 0.5em 0; }
-				.ProseMirror h1 { font-size: 1.75em; margin: 0.6em 0 0.3em; font-weight: 600; }
-				.ProseMirror h2 { font-size: 1.4em; margin: 0.6em 0 0.3em; font-weight: 600; }
-				.ProseMirror h3 { font-size: 1.15em; margin: 0.6em 0 0.3em; font-weight: 600; }
-				.ProseMirror ul:not(.writer-task-list), .ProseMirror ol { padding-left: 1.5em; }
-				.ProseMirror blockquote { border-left: 3px solid var(--vscode-editorWidget-border); margin-left: 0; padding-left: 1em; }
-				.ProseMirror code { background: var(--vscode-textCodeBlock-background, rgba(128,128,128,.15)); padding: 0.1em 0.35em; border-radius: 4px; font-size: 0.9em; }
-				.ProseMirror pre { background: var(--vscode-textCodeBlock-background, rgba(128,128,128,.12)); padding: 12px; border-radius: 6px; overflow-x: auto; }
-				.writer-task-list { list-style: none; padding-left: 0.25rem; }
-				.writer-task-item { display: flex; gap: 0.5rem; align-items: flex-start; margin: 0.75rem 0; }
-				.writer-task-item label { flex: 1; }
-				.ProseMirror:not(.dragging) .ProseMirror-selectednode {
-					outline: none !important;
-					background-color: color-mix(in srgb, var(--vscode-focusBorder) 18%, transparent);
-					transition: background-color 0.2s;
-				}
-				.drag-handle {
-					position: fixed;
-					z-index: 50;
-					width: 1.2rem;
-					height: 1.5rem;
-					cursor: grab;
-					opacity: 1;
-					border-radius: 0.25rem;
-					transition: opacity 0.2s ease, background-color 0.2s;
-					background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' fill='%23808080'%3E%3Cpath d='M3,2 C2.44771525,2 2,1.55228475 2,1 C2,0.44771525 2.44771525,0 3,0 C3.55228475,0 4,0.44771525 4,1 C4,1.55228475 3.55228475,2 3,2 Z M3,6 C2.44771525,6 2,5.55228475 2,5 C2,4.44771525 2.44771525,4 3,4 C3.55228475,4 4,4.44771525 4,5 C4,5.55228475 3.55228475,6 3,6 Z M3,10 C2.44771525,10 2,9.55228475 2,9 C2,8.44771525 2.44771525,8 3,8 C3.55228475,8 4,8.44771525 4,9 C4,9.55228475 3.55228475,10 3,10 Z M7,2 C6.44771525,2 6,1.55228475 6,1 C6,0.44771525 6.44771525,0 7,0 C7.55228475,0 8,0.44771525 8,1 C8,1.55228475 7.55228475,2 7,2 Z M7,6 C6.44771525,6 6,5.55228475 6,5 C6,4.44771525 6.44771525,4 7,4 C7.55228475,4 8,4.44771525 8,5 C8,5.55228475 7.55228475,6 7,6 Z M7,10 C6.44771525,10 6,9.55228475 6,9 C6,8.44771525 6.44771525,8 7,8 C7.55228475,8 8,8.44771525 8,9 C8,9.55228475 7.55228475,10 7,10 Z'/%3E%3C/svg%3E");
-					background-repeat: no-repeat;
-					background-position: center;
-					background-size: calc(0.5em + 0.375rem) calc(0.5em + 0.375rem);
-				}
-				.drag-handle:hover {
-					background-color: color-mix(in srgb, var(--vscode-editor-foreground) 8%, transparent);
-				}
-				.drag-handle:active {
-					cursor: grabbing;
-					background-color: color-mix(in srgb, var(--vscode-editor-foreground) 12%, transparent);
-				}
-				.drag-handle.hide {
-					opacity: 0;
-					pointer-events: none;
-				}
-			`}</style>
+			<style>{WRITER_THEME_STYLES}</style>
 		</div>
 	);
 }

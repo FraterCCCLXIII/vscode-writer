@@ -79,6 +79,11 @@
         "id": "vs-minimal",
         "label": "%minimalIconThemeLabel%",
         "path": "./fileicons/vs_minimal-icon-theme.json"
+      },
+      {
+        "id": "vscode-writer-lucide",
+        "label": "%writerLucideIconThemeLabel%",
+        "path": "./fileicons/writer-lucide/writer-lucide-icon-theme.json"
       }
     ]
   },
