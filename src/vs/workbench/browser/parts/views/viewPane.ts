@@ -680,9 +680,19 @@ export abstract class ViewPane extends Pane implements IView {
 			if (this.shouldShowFilterInHeader()) {
 				primaryActions.unshift(VIEWPANE_FILTER_ACTION);
 			}
-			this.toolbar.setActions(prepareActions(primaryActions), prepareActions(this.menuActions.getSecondaryActions()));
+			const secondaryActions = [...this.menuActions.getSecondaryActions()];
+			const adjusted = this.adjustViewTitleActions(primaryActions, secondaryActions);
+			this.toolbar.setActions(prepareActions(adjusted.primary), prepareActions(adjusted.secondary));
 			this.toolbar.context = this.getActionsContext();
 		}
+	}
+
+	/**
+	 * Optional hook for subclasses to move actions between the view header's primary strip and the ⋯ overflow menu.
+	 * Default: no change. Keep this method small when merging from upstream VS Code.
+	 */
+	protected adjustViewTitleActions(primary: IAction[], secondary: IAction[]): { primary: IAction[]; secondary: IAction[] } {
+		return { primary, secondary };
 	}
 
 	private updateActionsVisibility(): void {

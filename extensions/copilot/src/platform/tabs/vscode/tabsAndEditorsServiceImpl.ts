@@ -94,12 +94,27 @@ export class TabsAndEditorsServiceImpl implements ITabsAndEditorsService {
 		return vscode.window.tabGroups.all.flatMap(g => g.tabs).map(this._asTabInfo, this);
 	}
 
+	get activeCustomEditorUri(): vscode.Uri | undefined {
+		// Walk tab groups from most-recently-used to least, looking for a custom editor tab.
+		const groups = [...this._tabGroupsUseInfo];
+		groups.sort((a, b) => b[1] - a[1]);
+		for (const [group] of groups) {
+			const activeTab = group.activeTab;
+			if (activeTab?.input instanceof vscode.TabInputCustom) {
+				return activeTab.input.uri;
+			}
+		}
+		return undefined;
+	}
+
 	private _asTabInfo(tab: vscode.Tab): TabInfo {
 		let uri: vscode.Uri | undefined;
 		if (tab.input instanceof vscode.TabInputText || tab.input instanceof vscode.TabInputNotebook) {
 			uri = tab.input.uri;
 		} else if (tab.input instanceof vscode.TabInputTextDiff || tab.input instanceof vscode.TabInputNotebookDiff) {
 			uri = tab.input.modified;
+		} else if (tab.input instanceof vscode.TabInputCustom) {
+			uri = tab.input.uri;
 		}
 		return {
 			tab,

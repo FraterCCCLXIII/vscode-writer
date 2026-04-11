@@ -359,6 +359,24 @@ export class ChatMLFetcherImpl extends AbstractChatMLFetcher {
 						};
 					}
 
+					// Handle no-choices case: the API returned HTTP 200 but with an empty choices
+					// array (transient rate-limit, silent filter, or infrastructure blip).
+					// Retry once transparently before surfacing the error to the user.
+					if (result.type === ChatFetchResponseType.Unknown && result.reason === RESPONSE_CONTAINED_NO_CHOICES && enableRetryOnError) {
+						this._logService.warn(`Chat request returned no choices (requestId: ${ourRequestId}), retrying once.`);
+						streamRecorder.callback('', 0, { text: '', retryReason: 'server_error' });
+						const retryResult = await this.fetchMany({
+							...opts,
+							debugName: 'retry-no-choices-' + debugName,
+							userInitiatedRequest: false,
+							telemetryProperties: { ...telemetryProperties, retryAfterError: 'no_choices' },
+							enableRetryOnError: false,
+							enableRetryOnFilter: false,
+						}, token);
+						pendingLoggedChatRequest?.resolve(retryResult, streamRecorder.deltas);
+						return retryResult;
+					}
+
 					pendingLoggedChatRequest?.resolve(result, streamRecorder.deltas);
 
 					// Record OTel token usage metrics if available

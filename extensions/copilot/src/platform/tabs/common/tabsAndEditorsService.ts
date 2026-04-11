@@ -28,4 +28,9 @@ export interface ITabsAndEditorsService {
 	readonly visibleNotebookEditors: readonly vscode.NotebookEditor[];
 	readonly onDidChangeTabs: vscode.Event<TabChangeEvent>;
 	readonly tabs: TabInfo[];
+	/**
+	 * The URI of the file open in the active custom editor tab (e.g. Caret), or `undefined`
+	 * when the active editor is a regular text or notebook editor.
+	 */
+	readonly activeCustomEditorUri: vscode.Uri | undefined;
 }

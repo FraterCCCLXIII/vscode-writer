@@ -281,7 +281,7 @@
 			"problemMatcher": []
 		},
 		{
-			"label": "Run and Compile Code - OSS",
+			"label": "Run and Compile Caret",
 			"dependsOn": ["Transpile Client", "Run Dev"],
 			"dependsOrder": "sequence",
 			"inSessions": true,

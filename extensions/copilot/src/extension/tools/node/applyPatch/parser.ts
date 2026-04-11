@@ -594,7 +594,28 @@ function find_context_core(
 		}
 	}
 
-	// Pass 5 - within edit distance while ignoring surrounding whitespace -----
+	// Pass 5.5 – tolerate blank lines in the file that are absent from the context.
+	// Models often omit blank separator lines when writing context (e.g. a blank line
+	// between a heading and a paragraph), causing a technically-correct patch to fail.
+	// Only attempt this when every context line is non-empty, meaning the model simply
+	// forgot to include the blanks rather than explicitly specifying them.
+	const ctxAllNonBlank = ctxPass5.split('\n');
+	if (ctxAllNonBlank.length >= 2 && ctxAllNonBlank.every(l => l.length > 0)) {
+		outer55: for (let i = start; i < workingLines.length; i++) {
+			let fi = i;
+			for (let ci = 0; ci < ctxAllNonBlank.length; ci++) {
+				// Advance past consecutive blank lines in the file.
+				while (fi < workingLines.length && workingLines[fi] === '') { fi++; }
+				if (fi >= workingLines.length || workingLines[fi] !== ctxAllNonBlank[ci]) {
+					continue outer55;
+				}
+				fi++;
+			}
+			return { line: i, fuzz };
+		}
+	}
+
+	// Pass 5 (edit-distance) - within edit distance while ignoring surrounding whitespace -----
 	const maxDistance = Math.floor(context.length * EDIT_DISTANCE_ALLOWANCE_PER_LINE);
 	fuzz |= Fuzz.EditDistanceMatch;
 	if (maxDistance > 0) {

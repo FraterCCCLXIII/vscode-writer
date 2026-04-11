@@ -29,6 +29,7 @@ export class ThirdPartyLanguageModelContribution extends Disposable implements I
 	private readonly _apiKeyStorageService: IBYOKStorageService;
 	private readonly _providers: Map<string, LanguageModelChatProvider<LanguageModelChatInformation>> = new Map();
 	private _thirdPartyProvidersRegistered = false;
+	private _registrationInFlight = false;
 
 	constructor(
 		@IFetcherService private readonly _fetcherService: IFetcherService,
@@ -57,9 +58,10 @@ export class ThirdPartyLanguageModelContribution extends Disposable implements I
 	}
 
 	private async _tryRegisterThirdPartyProviders(authService: IAuthenticationService, instantiationService: IInstantiationService) {
-		if (this._thirdPartyProvidersRegistered || !this._shouldRegisterThirdPartyProviders(authService)) {
+		if (this._thirdPartyProvidersRegistered || this._registrationInFlight || !this._shouldRegisterThirdPartyProviders(authService)) {
 			return;
 		}
+		this._registrationInFlight = true;
 		let knownModels: Record<string, BYOKKnownModels>;
 		try {
 			knownModels = await this.fetchKnownModelList(this._fetcherService);
@@ -68,6 +70,7 @@ export class ThirdPartyLanguageModelContribution extends Disposable implements I
 			knownModels = {};
 		}
 		if (this._store.isDisposed) {
+			this._registrationInFlight = false;
 			return;
 		}
 		this._providers.set(OllamaLMProvider.providerName.toLowerCase(), instantiationService.createInstance(OllamaLMProvider, this._apiKeyStorageService));
@@ -83,6 +86,7 @@ export class ThirdPartyLanguageModelContribution extends Disposable implements I
 			this._store.add(lm.registerLanguageModelChatProvider(providerName, provider));
 		}
 		this._thirdPartyProvidersRegistered = true;
+		this._registrationInFlight = false;
 		this._endpointProvider.notifyThirdPartyLanguageModelsChanged();
 	}
 	private async fetchKnownModelList(fetcherService: IFetcherService): Promise<Record<string, BYOKKnownModels>> {

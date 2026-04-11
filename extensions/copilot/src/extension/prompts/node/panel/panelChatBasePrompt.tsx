@@ -17,6 +17,7 @@ import { ResponseTranslationRules } from '../base/responseTranslationRules';
 import { SafetyRules } from '../base/safetyRules';
 import { Tag } from '../base/tag';
 import { ChatToolReferences, ChatVariablesAndQuery } from './chatVariables';
+import { PanelEditorSelectionContext } from './panelEditorSelectionContext';
 import { CodeBlockFormattingRules } from './codeBlockFormattingRules';
 import { HistoryWithInstructions } from './conversationHistory';
 import { CustomInstructions } from './customInstructions';
@@ -75,6 +76,7 @@ export class PanelChatBasePrompt extends PromptElement<PanelChatBasePromptProps>
 				<UserMessage flexGrow={2}>
 					{useProjectLabels && <ProjectLabels flexGrow={1} priority={600} />}
 					<CustomInstructions flexGrow={1} priority={750} languageId={undefined} chatVariables={chatVariables} />
+					<PanelEditorSelectionContext flexGrow={2} priority={820} chatVariables={chatVariables} />
 					<ChatToolReferences priority={899} flexGrow={2} promptContext={this.props.promptContext} />
 					<ChatVariablesAndQuery flexGrow={3} flexReserve='/3' priority={900} chatVariables={chatVariables} query={query} includeFilepath={true} />
 				</UserMessage>

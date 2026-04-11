@@ -8,12 +8,13 @@ import type { NotebookEditor, TextEditor } from 'vscode';
 import { NotebookDocumentSnapshot } from '../../../../platform/editing/common/notebookDocumentSnapshot';
 import { IIgnoreService } from '../../../../platform/ignore/common/ignoreService';
 import { IAlternativeNotebookContentService } from '../../../../platform/notebook/common/alternativeContent';
+import { IPromptPathRepresentationService } from '../../../../platform/prompts/common/promptPathRepresentationService';
 import { ITabsAndEditorsService } from '../../../../platform/tabs/common/tabsAndEditorsService';
 import { IWorkspaceService } from '../../../../platform/workspace/common/workspaceService';
 import { findCell, findNotebook } from '../../../../util/common/notebooks';
 import { Schemas } from '../../../../util/vs/base/common/network';
 import * as path from '../../../../util/vs/base/common/path';
-import { Position, Range } from '../../../../vscodeTypes';
+import { Position, Range, Uri } from '../../../../vscodeTypes';
 import { PromptReference } from '../../../prompt/common/conversation';
 import { IPromptEndpoint } from '../base/promptRenderer';
 import { CodeBlock } from './safeElements';
@@ -29,6 +30,7 @@ export class CurrentEditor extends PromptElement<CurrentEditorPromptProps> {
 		@IAlternativeNotebookContentService private readonly _alternativeNotebookContentService: IAlternativeNotebookContentService,
 		@IWorkspaceService private readonly _workspaceService: IWorkspaceService,
 		@IPromptEndpoint private readonly _promptEndpoint: IPromptEndpoint,
+		@IPromptPathRepresentationService private readonly _promptPathRepresentationService: IPromptPathRepresentationService,
 	) {
 		super(props);
 	}
@@ -48,7 +50,49 @@ export class CurrentEditor extends PromptElement<CurrentEditorPromptProps> {
 		if (notebookEditor) {
 			return this.renderActiveNotebookEditor(notebookEditor);
 		}
+
+		// Custom editors (e.g. Caret) don't expose a TextEditor or NotebookEditor.
+		// Fall back to reading the underlying document file so the agent has file context.
+		const customEditorUri = this._tabsAndEditorsService.activeCustomEditorUri;
+		if (customEditorUri) {
+			return this.renderActiveCustomEditorDocument(customEditorUri);
+		}
+
 		return undefined;
+	}
+
+	async renderActiveCustomEditorDocument(uri: Uri): Promise<JSX.Element | undefined> {
+		const isIgnored = await this._ignoreService.isCopilotIgnored(uri);
+		if (isIgnored) {
+			return <ignoredFiles value={[uri]} />;
+		}
+		try {
+			const document = await this._workspaceService.openTextDocument(uri);
+			const filePath = this._promptPathRepresentationService.getFilePath(uri);
+			const text = document.getText();
+			if (!text.trim().length) {
+				return (<>
+					<UserMessage priority={this.props.priority}>
+						<references value={[new PromptReference(uri)]} />
+						The active {document.languageId} file {filePath} is empty.
+					</UserMessage>
+				</>);
+			}
+			const lastLine = document.lineCount - 1;
+			const endChar = document.lineAt(lastLine).text.length;
+			const fullRange = new Range(0, 0, lastLine, endChar);
+			return (<>
+				<UserMessage priority={this.props.priority}>
+					<>
+						Active file {filePath}:<br />
+						<CodeBlock code={text} languageId={document.languageId} uri={uri} includeFilepath references={[new PromptReference({ uri, range: fullRange })]} />
+						<br />
+					</>
+				</UserMessage>
+			</>);
+		} catch {
+			return undefined;
+		}
 	}
 
 	async renderActiveTextEditor(editor: TextEditor) {

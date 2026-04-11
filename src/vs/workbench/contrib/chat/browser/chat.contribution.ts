@@ -105,6 +105,7 @@ import { ChatDebugEditor } from './chatDebug/chatDebugEditor.js';
 import { PromptsDebugContribution } from './promptsDebugContribution.js';
 import { ChatDebugEditorInput, ChatDebugEditorInputSerializer } from './chatDebug/chatDebugEditorInput.js';
 import './agentSessions/agentSessions.contribution.js';
+import './chatAuxiliaryBarCompact.contribution.js';
 
 import { ChatContextKeys } from '../common/actions/chatContextKeys.js';
 
@@ -584,6 +585,11 @@ configurationRegistry.registerConfiguration({
 			],
 			default: 'sideBySide',
 			description: nls.localize('chat.viewSessions.orientation', "Controls the orientation of the chat agent sessions view when it is shown alongside the chat."),
+		},
+		[ChatConfiguration.ViewTitleToolbarCompactNewChatOnly]: {
+			type: 'boolean',
+			default: true,
+			description: nls.localize('chat.viewTitleToolbar.compactNewChatOnly', "When enabled, the Chat view header shows only the New Chat (+) control; other header actions move into the ⋯ overflow menu. Session title and sessions list toolbars also move extra actions into overflow. Secondary side bar maximize/close move into ⋯ when Chat is the active panel."),
 		},
 		[ChatConfiguration.ChatViewProgressBadgeEnabled]: {
 			type: 'boolean',

@@ -26,6 +26,7 @@ import { ResourceMap } from '../../../../util/vs/base/common/map';
 import { isEqual } from '../../../../util/vs/base/common/resources';
 import { IInstantiationService } from '../../../../util/vs/platform/instantiation/common/instantiation';
 import { Range, TextEdit } from '../../../../vscodeTypes';
+import { isStandaloneThirdPartyChatFromProduct } from '../../../../platform/authentication/common/standaloneThirdPartyChatProduct';
 import { OutcomeAnnotation } from '../../../inlineChat/node/promptCraftingTypes';
 import { IWorkingSet } from '../../../prompt/common/intents';
 import { EXISTING_CODE_MARKER } from '../panel/codeBlockFormattingRules';
@@ -131,6 +132,16 @@ class DocumentCodeMapper extends Disposable implements ICodeMapperService {
 			return {};
 		}
 
+		// Standalone third-party mode has no CAPI access, so the speculative-decoding endpoints are
+		// unavailable. When the agent provides a complete replacement (no EXISTING_CODE_MARKER),
+		// directly overwrite the file content instead of routing through the code mapper.
+		if (isStandaloneThirdPartyChatFromProduct() && documentContext && !codeBlock.code.includes(EXISTING_CODE_MARKER)) {
+			const lastLine = documentContext.lineCount - 1;
+			const lastChar = documentContext.lineAt(lastLine).text.length;
+			responseStream.textEdit(codeBlock.resource, new TextEdit(new Range(0, 0, lastLine, lastChar), codeBlock.code));
+			this._telemetryService.sendMSFTTelemetryEvent('codemapper.standaloneFullRewrite');
+			return {};
+		}
 
 		let editSurvivalTracker: IEditSurvivalTrackingSession | undefined;
 		// set up edit survival tracking currently only when we are modifying an existing document

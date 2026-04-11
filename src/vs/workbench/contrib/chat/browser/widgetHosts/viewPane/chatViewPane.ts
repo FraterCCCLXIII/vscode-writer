@@ -15,9 +15,10 @@ import { MarshalledId } from '../../../../../../base/common/marshallingIds.js';
 import { autorun, IReader } from '../../../../../../base/common/observable.js';
 import { isEqual } from '../../../../../../base/common/resources.js';
 import { URI } from '../../../../../../base/common/uri.js';
+import { IAction } from '../../../../../../base/common/actions.js';
 import { localize } from '../../../../../../nls.js';
 import { MenuWorkbenchToolBar } from '../../../../../../platform/actions/browser/toolbar.js';
-import { MenuId } from '../../../../../../platform/actions/common/actions.js';
+import { MenuId, SubmenuItemAction } from '../../../../../../platform/actions/common/actions.js';
 import { ICommandService } from '../../../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../../../platform/configuration/common/configuration.js';
 import { IContextKey, IContextKeyService } from '../../../../../../platform/contextkey/common/contextkey.js';
@@ -85,6 +86,9 @@ type ChatViewPaneOpenedClassification = {
 };
 
 export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
+
+	/** Matches {@link SubmenuItemAction} id for the Chat "New Chat" split control on {@link MenuId.ViewTitle}. */
+	private static readonly _chatNewMenuSubmenuToolbarActionId = `submenuitem.${MenuId.ChatNewMenu.id}`;
 
 	private readonly memento: Memento<IChatViewPaneState>;
 	private readonly viewState: IChatViewPaneState;
@@ -248,6 +252,46 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 		})(() => this.updateViewPaneClasses(true)));
 	}
 
+	protected override adjustViewTitleActions(primary: IAction[], secondary: IAction[]): { primary: IAction[]; secondary: IAction[] } {
+		if (!this.configurationService.getValue<boolean>(ChatConfiguration.ViewTitleToolbarCompactNewChatOnly)) {
+			return { primary, secondary };
+		}
+		const keepInPrimary = (a: IAction) =>
+			a.id === ChatViewPane._chatNewMenuSubmenuToolbarActionId
+			|| (a instanceof SubmenuItemAction && a.item.submenu.id === MenuId.ChatNewMenu.id);
+
+		const toOverflow: IAction[] = [];
+		const newPrimary: IAction[] = [];
+		for (const a of primary) {
+			if (keepInPrimary(a)) {
+				newPrimary.push(a);
+			} else {
+				toOverflow.push(a);
+			}
+		}
+		return { primary: newPrimary, secondary: [...toOverflow, ...secondary] };
+	}
+
+	private getAgentSessionsToolbarOptions(): { menuOptions: { shouldForwardArgs: boolean }; overflowBehavior?: { maxItems: number } } {
+		const compact = this.configurationService.getValue<boolean>(ChatConfiguration.ViewTitleToolbarCompactNewChatOnly);
+		if (compact) {
+			return {
+				menuOptions: { shouldForwardArgs: true },
+				overflowBehavior: { maxItems: 0 },
+			};
+		}
+		return { menuOptions: { shouldForwardArgs: true } };
+	}
+
+	private recreateSessionsToolbar(): void {
+		if (!this.sessionsToolbarContainer || !this.sessionsControl) {
+			return;
+		}
+		this.sessionsToolbar.clear();
+		this.sessionsToolbar.value = this.instantiationService.createInstance(MenuWorkbenchToolBar, this.sessionsToolbarContainer, MenuId.AgentSessionsToolbar, this.getAgentSessionsToolbarOptions());
+		this.sessionsToolbar.value.context = this.sessionsControl;
+	}
+
 	private onDidChangeAgents(): void {
 		if (this.chatAgentService.getDefaultAgent(ChatAgentLocation.Chat)) {
 			if (!this._widget?.viewModel && !this.restoringSession) {
@@ -347,6 +391,8 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 	private sessionsViewerSidebarWidth: number;
 	private sessionsViewerSash: Sash | undefined;
 	private readonly sessionsViewerSashDisposables = this._register(new MutableDisposable<DisposableStore>());
+	private sessionsToolbarContainer: HTMLElement | undefined;
+	private readonly sessionsToolbar = this._register(new MutableDisposable<MenuWorkbenchToolBar>());
 
 	private createSessionsControl(parent: HTMLElement): AgentSessionsControl {
 		const sessionsContainer = this.sessionsContainer = parent.appendChild($('.agent-sessions-container'));
@@ -361,10 +407,8 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 		}));
 
 		// Sessions Toolbar
-		const sessionsToolbarContainer = append(sessionsTitleContainer, $('.agent-sessions-toolbar'));
-		const sessionsToolbar = this._register(this.instantiationService.createInstance(MenuWorkbenchToolBar, sessionsToolbarContainer, MenuId.AgentSessionsToolbar, {
-			menuOptions: { shouldForwardArgs: true }
-		}));
+		const sessionsToolbarContainer = this.sessionsToolbarContainer = append(sessionsTitleContainer, $('.agent-sessions-toolbar'));
+		this.sessionsToolbar.value = this.instantiationService.createInstance(MenuWorkbenchToolBar, sessionsToolbarContainer, MenuId.AgentSessionsToolbar, this.getAgentSessionsToolbarOptions());
 
 		// Sessions Filter
 		const sessionsFilter = this._register(this.instantiationService.createInstance(AgentSessionsFilter, {
@@ -373,6 +417,13 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 		}));
 		this._register(Event.runAndSubscribe(sessionsFilter.onDidChange, () => {
 			sessionsToolbarContainer.classList.toggle('filtered', !sessionsFilter.isDefault());
+		}));
+
+		this._register(this.configurationService.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration(ChatConfiguration.ViewTitleToolbarCompactNewChatOnly)) {
+				this.recreateSessionsToolbar();
+				this.updateActions();
+			}
 		}));
 
 		// New Session Button
@@ -400,7 +451,7 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 		}));
 		this._register(this.onDidChangeBodyVisibility(visible => sessionsControl.setVisible(visible)));
 
-		sessionsToolbar.context = sessionsControl;
+		this.sessionsToolbar.value!.context = sessionsControl;
 
 		// Refresh sessions when window gets focus to compensate for missing events
 		this._register(this.hostService.onDidChangeFocus(hasFocus => {

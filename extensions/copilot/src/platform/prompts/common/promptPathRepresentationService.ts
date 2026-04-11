@@ -102,6 +102,14 @@ export class PromptPathRepresentationService implements IPromptPathRepresentatio
 				return undefined;
 			}
 		}
+
+		// Relative path: resolve against workspace folders as a best-effort fallback so the model
+		// doesn't need to supply the full absolute path (e.g. "Chapters/foo.md" → "/workspace/Chapters/foo.md").
+		const folders = this.workspaceService.getWorkspaceFolders().filter(f => f.scheme === Schemas.file);
+		if (folders.length > 0 && filepath.length > 0) {
+			return URI.joinPath(folders[0], filepath);
+		}
+
 		return undefined;
 	}
 

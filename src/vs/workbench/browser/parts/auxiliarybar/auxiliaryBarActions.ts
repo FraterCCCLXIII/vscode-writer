@@ -27,6 +27,12 @@ const auxiliaryBarRightOffIcon = registerIcon('auxiliarybar-right-off-layout-ico
 const auxiliaryBarLeftIcon = registerIcon('auxiliarybar-left-layout-icon', Codicon.layoutSidebarLeft, localize('toggleAuxiliaryIconLeft', 'Icon to toggle the secondary side bar in its left position.'));
 const auxiliaryBarLeftOffIcon = registerIcon('auxiliarybar-left-off-layout-icon', Codicon.layoutSidebarLeftOff, localize('toggleAuxiliaryIconLeftOn', 'Icon to toggle the secondary side bar on in its left position.'));
 
+/** When false, Chat compact mode hides these from the auxiliary bar primary strip (overflow duplicates in chatAuxiliaryBarCompact.contribution.ts). */
+const hideAuxiliaryBarNavWhenCompactChat = ContextKeyExpr.or(
+	ContextKeyExpr.notEquals(`config.chat.viewTitleToolbar.compactNewChatOnly`, true),
+	ContextKeyExpr.notEquals('activeAuxiliary', 'workbench.panel.chat'),
+);
+
 export class ToggleAuxiliaryBarAction extends Action2 {
 
 	static readonly ID = 'workbench.action.toggleAuxiliaryBar';
@@ -91,7 +97,10 @@ MenuRegistry.appendMenuItem(MenuId.AuxiliaryBarTitle, {
 	},
 	group: 'navigation',
 	order: 2,
-	when: ContextKeyExpr.equals(`config.${LayoutSettings.ACTIVITY_BAR_LOCATION}`, ActivityBarPosition.DEFAULT)
+	when: ContextKeyExpr.and(
+		ContextKeyExpr.equals(`config.${LayoutSettings.ACTIVITY_BAR_LOCATION}`, ActivityBarPosition.DEFAULT),
+		hideAuxiliaryBarNavWhenCompactChat,
+	)
 });
 
 registerAction2(class extends Action2 {
@@ -286,6 +295,7 @@ class ToggleMaximizedAuxiliaryBar extends Action2 {
 				id: MenuId.AuxiliaryBarTitle,
 				group: 'navigation',
 				order: 1,
+				when: hideAuxiliaryBarNavWhenCompactChat,
 			}
 		});
 	}

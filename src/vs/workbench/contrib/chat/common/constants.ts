@@ -46,6 +46,8 @@ export enum ChatConfiguration {
 	ChatViewSessionsGrouping = 'chat.viewSessions.grouping',
 	ChatViewSessionsOrientation = 'chat.viewSessions.orientation',
 	ChatViewProgressBadgeEnabled = 'chat.viewProgressBadge.enabled',
+	/** Compact Chat view chrome: only the New Chat (+) control stays in the header strip; see ChatViewPane and ChatViewTitleControl. */
+	ViewTitleToolbarCompactNewChatOnly = 'chat.viewTitleToolbar.compactNewChatOnly',
 	ChatContextUsageEnabled = 'chat.contextUsage.enabled',
 	SubagentToolCustomAgents = 'chat.customAgentInSubagent.enabled',
 	GeneralPurposeAgentEnabled = 'chat.generalPurposeAgent.enabled',

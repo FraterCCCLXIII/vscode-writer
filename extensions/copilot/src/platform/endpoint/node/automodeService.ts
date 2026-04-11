@@ -171,7 +171,7 @@ export class AutomodeService extends Disposable implements IAutomodeService {
 
 	async resolveAutoModeEndpoint(chatRequest: ChatRequest | undefined, knownEndpoints: IChatEndpoint[]): Promise<IChatEndpoint> {
 		if (!knownEndpoints.length) {
-			throw new Error('No auto mode endpoints provided.');
+			throw new Error('No language model endpoints are available. Please add an API key in Settings (Copilot > Third-Party API Keys).');
 		}
 
 		/** Roo-style: only extension/BYOK/local LMs — no CAPI auto-router. */

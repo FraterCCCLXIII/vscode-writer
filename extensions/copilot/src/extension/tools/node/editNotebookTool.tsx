@@ -20,7 +20,7 @@ import { ITelemetryService } from '../../../platform/telemetry/common/telemetry'
 import { IWorkspaceService } from '../../../platform/workspace/common/workspaceService';
 import { createSha256Hash } from '../../../util/common/crypto';
 import { createFencedCodeBlock } from '../../../util/common/markdown';
-import { findCell, findNotebook, isJupyterNotebook } from '../../../util/common/notebooks';
+import { findCell, findNotebook, isJupyterNotebook, isJupyterNotebookUri } from '../../../util/common/notebooks';
 import { asArray } from '../../../util/vs/base/common/arrays';
 import { findLast } from '../../../util/vs/base/common/arraysFind';
 import { raceCancellation, StatefulPromise } from '../../../util/vs/base/common/async';
@@ -84,6 +84,15 @@ export class EditNotebookTool implements ICopilotTool<IEditNotebookToolParams> {
 		// Resolve this to notebook.
 		uri = findNotebook(uri, this.workspaceService.notebookDocuments)?.uri || uri;
 
+		// Reject non-notebook files early so the agent can immediately retry with the right tool.
+		const isAlreadyOpenNotebook = this.workspaceService.notebookDocuments.some(n => isEqual(n.uri, uri!));
+		if (!isAlreadyOpenNotebook && !isJupyterNotebookUri(uri)) {
+			throw new ErrorWithTelemetrySafeReason(
+				`'${uri.fsPath}' is not a Jupyter notebook — it is a plain text file. Use the ${ToolName.EditFile} or ${ToolName.ApplyPatch} tool to edit it instead.`,
+				'not_a_notebook'
+			);
+		}
+
 		// Validate parameters
 		const stream = this.promptContext?.stream;
 		if (!stream) {
@@ -95,7 +104,15 @@ export class EditNotebookTool implements ICopilotTool<IEditNotebookToolParams> {
 		try {
 			notebook = await this.workspaceService.openNotebookDocument(uri);
 		} catch (error) {
-			if (await this.fileSystemService.stat(uri).catch(() => false)) {
+			const fileExists = await this.fileSystemService.stat(uri).catch(() => false);
+			if (fileExists) {
+				// "Missing viewType" means the file is a custom editor (e.g. a markdown file open
+				// in the Caret editor), not a Jupyter notebook. Direct the agent to the
+				// correct tool so it can retry immediately.
+				const message: string = error.message || error.toString();
+			if (message.includes('Missing viewType')) {
+				throw new Error(`'${uri.fsPath}' is not a Jupyter notebook — it is a plain text file. Use the ${ToolName.EditFile} or ${ToolName.ApplyPatch} tool to edit it instead.`);
+			}
 				throw error;
 			} else {
 				// Possible the notebook does not exist and model is trying to create a new notebook.
