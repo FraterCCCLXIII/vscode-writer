@@ -58,6 +58,27 @@ export const WRITER_THEME_STYLES = `
 	text-decoration-color: var(--vscode-editorHint-foreground, var(--vscode-descriptionForeground));
 }
 
+/* Comment anchors (see writerCommentHighlights.ts) */
+.writer-comment-highlight {
+	background: color-mix(
+		in srgb,
+		var(--vscode-editor-wordHighlightBackground, rgba(160, 160, 160, 0.25)) 90%,
+		transparent
+	);
+	border-radius: 2px;
+	box-decoration-break: clone;
+	-webkit-box-decoration-break: clone;
+}
+.writer-comment-highlight-active {
+	background: color-mix(
+		in srgb,
+		var(--vscode-editor-selectionBackground, rgba(100, 150, 255, 0.35)) 85%,
+		transparent
+	);
+	outline: 1px solid color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 70%, transparent);
+	outline-offset: 1px;
+}
+
 .ProseMirror p { margin: 0.5em 0; }
 .ProseMirror h1 { font-size: 1.75em; margin: 0.6em 0 0.3em; font-weight: 600; color: var(--vscode-editor-foreground); }
 .ProseMirror h2 { font-size: 1.4em; margin: 0.6em 0 0.3em; font-weight: 600; color: var(--vscode-editor-foreground); }

@@ -32,7 +32,11 @@ import {
 import { appendFootnoteDefsMarkdown, extractFootnoteDefsFromHtml } from './htmlFootnotes';
 import { writerTurndown } from './turndownWriter';
 import { markdownToEditorHtml } from './markdownToEditorHtml';
-import { WriterDiagnostics, type WriterDiagnosticItem } from './writerDiagnostics';
+import {
+	WriterCommentHighlights,
+	type WriterCommentHighlightItem,
+} from './writerCommentHighlights';
+import { WriterDiagnostics, findTextRangeInDoc, type WriterDiagnosticItem } from './writerDiagnostics';
 import { WriterFootnoteDef, WriterFootnoteRef } from './writerFootnote';
 
 type VsCodeApi = { postMessage: (msg: unknown) => void };
@@ -59,7 +63,9 @@ type HostToWebview =
 			orphaned?: boolean;
 			anchor: { start: number; end: number; quote: string };
 		}[];
-	};
+	}
+	| { type: 'focusComment'; commentId: string; quote?: string }
+	| { type: 'clearActiveComment' };
 
 function getVsCode(): VsCodeApi {
 	const w = globalThis as unknown as { __writerVsCodeApi?: VsCodeApi };
@@ -132,6 +138,107 @@ function WriterApp() {
 	const pendingRawMdRef = useRef<string | null>(null);
 	const imageInputRef = useRef<HTMLInputElement>(null);
 	const resourceUriRef = useRef<string>('');
+	const pendingCommentHighlightsRef = useRef<WriterCommentHighlightItem[]>([]);
+	const activeCommentIdRef = useRef<string | null>(null);
+	/** Ignore editor mousedown clear briefly after programmatic focus-from-comment (avoids clearing immediately). */
+	const ignoreClearActiveUntilRef = useRef(0);
+	const clearActiveCommentHighlightRef = useRef<() => void>(() => {});
+	const syncActiveCommentFromSelectionRef = useRef<(editor: Editor) => void>(() => {});
+
+	const flushCommentHighlights = useCallback(() => {
+		const ed = editorRef.current;
+		if (!ed || ed.isDestroyed) {
+			return;
+		}
+		(
+			ed.chain() as unknown as {
+				setWriterCommentHighlights: (items: WriterCommentHighlightItem[]) => { run: () => boolean };
+			}
+		).setWriterCommentHighlights(pendingCommentHighlightsRef.current).run();
+	}, []);
+
+	/** Keep Comments side bar card selection in sync with Caret active highlight. */
+	const notifyHostActiveCommentChanged = useCallback(() => {
+		try {
+			vscodeRef.current?.postMessage({ type: 'activeCommentChanged', commentId: activeCommentIdRef.current });
+		} catch {
+			// ignore
+		}
+	}, []);
+
+	const clearActiveCommentHighlight = useCallback(() => {
+		if (activeCommentIdRef.current === null) {
+			return;
+		}
+		activeCommentIdRef.current = null;
+		pendingCommentHighlightsRef.current = pendingCommentHighlightsRef.current.map(h => ({ ...h, isActive: false }));
+		flushCommentHighlights();
+		notifyHostActiveCommentChanged();
+	}, [flushCommentHighlights, notifyHostActiveCommentChanged]);
+
+	useEffect(() => {
+		clearActiveCommentHighlightRef.current = clearActiveCommentHighlight;
+	}, [clearActiveCommentHighlight]);
+
+	/** When the caret or selection sits on commented text, show that comment as active (same style as panel focus). */
+	const syncActiveCommentFromSelection = useCallback(
+		(editor: Editor) => {
+			if (performance.now() < ignoreClearActiveUntilRef.current) {
+				return;
+			}
+			const { from, to } = editor.state.selection;
+			const doc = editor.state.doc;
+			const collapsed = from === to;
+
+			let matchedId: string | null = null;
+			let bestLen = Number.POSITIVE_INFINITY;
+			for (const item of pendingCommentHighlightsRef.current) {
+				if (item.orphaned) {
+					continue;
+				}
+				const range = findTextRangeInDoc(doc, item.quote);
+				if (!range) {
+					continue;
+				}
+				const len = range.to - range.from;
+				let inside = false;
+				if (collapsed) {
+					inside = from >= range.from && from <= range.to;
+				} else {
+					inside = from < range.to && to > range.from;
+				}
+				if (inside && len < bestLen) {
+					bestLen = len;
+					matchedId = item.id;
+				}
+			}
+
+			if (matchedId === activeCommentIdRef.current) {
+				return;
+			}
+			if (matchedId === null) {
+				if (activeCommentIdRef.current !== null) {
+					activeCommentIdRef.current = null;
+					pendingCommentHighlightsRef.current = pendingCommentHighlightsRef.current.map(h => ({
+						...h,
+						isActive: false,
+					}));
+					flushCommentHighlights();
+					notifyHostActiveCommentChanged();
+				}
+				return;
+			}
+			activeCommentIdRef.current = matchedId;
+			pendingCommentHighlightsRef.current = pendingCommentHighlightsRef.current.map(h => ({
+				...h,
+				isActive: h.id === matchedId,
+			}));
+			flushCommentHighlights();
+			notifyHostActiveCommentChanged();
+		},
+		[flushCommentHighlights, notifyHostActiveCommentChanged],
+	);
+	syncActiveCommentFromSelectionRef.current = syncActiveCommentFromSelection;
 
 	const pushContent = useCallback(() => {
 		if (!canPushToHostRef.current) {
@@ -182,6 +289,41 @@ function WriterApp() {
 				// Native Chromium spellcheck fights with Harper/LSP decorations and confuses users.
 				spellcheck: 'false',
 			},
+			handleDOMEvents: {
+				mousedown: (_view, event) => {
+					if (performance.now() < ignoreClearActiveUntilRef.current) {
+						return false;
+					}
+					const ed = editorRef.current;
+					if (!ed || ed.isDestroyed) {
+						return false;
+					}
+					if (activeCommentIdRef.current === null) {
+						return false;
+					}
+					const posInfo = ed.view.posAtCoords({ left: event.clientX, top: event.clientY });
+					if (posInfo === null) {
+						return false;
+					}
+					const pos = posInfo.pos;
+					const id = activeCommentIdRef.current;
+					const item = pendingCommentHighlightsRef.current.find(h => h.id === id);
+					if (!item || item.orphaned) {
+						clearActiveCommentHighlightRef.current();
+						return false;
+					}
+					const range = findTextRangeInDoc(ed.state.doc, item.quote);
+					if (!range) {
+						clearActiveCommentHighlightRef.current();
+						return false;
+					}
+					if (pos >= range.from && pos <= range.to) {
+						return false;
+					}
+					clearActiveCommentHighlightRef.current();
+					return false;
+				},
+			},
 		},
 		extensions: [
 			StarterKit.configure({
@@ -215,12 +357,19 @@ function WriterApp() {
 			}),
 			GlobalDragHandle,
 			WriterDiagnostics,
+			WriterCommentHighlights,
 			WriterFootnoteRef,
 			WriterFootnoteDef,
 		],
 		content: '<p></p>',
 		onUpdate: () => debouncedPushRef.current(),
-		onSelectionUpdate: () => debouncedSelectionRef.current(),
+		onSelectionUpdate: () => {
+			debouncedSelectionRef.current();
+			const ed = editorRef.current;
+			if (ed && !ed.isDestroyed) {
+				syncActiveCommentFromSelectionRef.current(ed);
+			}
+		},
 	});
 
 	editorRef.current = editor;
@@ -251,6 +400,61 @@ function WriterApp() {
 
 			if (msg.type === 'commentsForResource') {
 				resourceUriRef.current = msg.resource;
+				const activeId = activeCommentIdRef.current;
+				pendingCommentHighlightsRef.current = (msg.comments ?? []).map(c => ({
+					id: c.id,
+					quote: c.anchor.quote,
+					body: c.body,
+					orphaned: c.orphaned,
+					isActive: activeId !== null && c.id === activeId,
+				}));
+				requestAnimationFrame(() => {
+					requestAnimationFrame(() => {
+						flushCommentHighlights();
+						const ed = editorRef.current;
+						if (ed && !ed.isDestroyed) {
+							syncActiveCommentFromSelectionRef.current(ed);
+						}
+						notifyHostActiveCommentChanged();
+					});
+				});
+				return;
+			}
+
+			if (msg.type === 'clearActiveComment') {
+				clearActiveCommentHighlight();
+				return;
+			}
+
+			if (msg.type === 'focusComment' && typeof msg.commentId === 'string') {
+				const focusId = msg.commentId;
+				const quoteFromHost = typeof msg.quote === 'string' ? msg.quote : '';
+				activeCommentIdRef.current = focusId;
+				pendingCommentHighlightsRef.current = pendingCommentHighlightsRef.current.map(h => ({
+					...h,
+					isActive: h.id === focusId,
+				}));
+				notifyHostActiveCommentChanged();
+				requestAnimationFrame(() => {
+					requestAnimationFrame(() => {
+						flushCommentHighlights();
+						const ed = editorRef.current;
+						if (!ed || ed.isDestroyed) {
+							return;
+						}
+						const row = pendingCommentHighlightsRef.current.find(h => h.id === focusId);
+						const quote = quoteFromHost.trim().length > 0 ? quoteFromHost : row?.quote;
+						if (!quote?.trim().length) {
+							return;
+						}
+						const range = findTextRangeInDoc(ed.state.doc, quote);
+						if (!range) {
+							return;
+						}
+						ed.chain().focus().setTextSelection({ from: range.from, to: range.to }).scrollIntoView().run();
+						ignoreClearActiveUntilRef.current = performance.now() + 450;
+					});
+				});
 				return;
 			}
 
@@ -285,6 +489,7 @@ function WriterApp() {
 						ed.chain().setContent(toApply, false).run();
 						queueMicrotask(() => {
 							canPushToHostRef.current = true;
+							flushCommentHighlights();
 						});
 					});
 				}
@@ -339,6 +544,7 @@ function WriterApp() {
 					ed.chain().setContent(html, false).run();
 					queueMicrotask(() => {
 						canPushToHostRef.current = true;
+						flushCommentHighlights();
 					});
 				} else {
 					formatRef.current = 'rtf';
@@ -348,6 +554,7 @@ function WriterApp() {
 					ed.chain().setContent(html, false).run();
 					queueMicrotask(() => {
 						canPushToHostRef.current = true;
+						flushCommentHighlights();
 					});
 				}
 			});
@@ -370,7 +577,7 @@ function WriterApp() {
 			clearInterval(retryTimer);
 			window.removeEventListener('message', onMessage);
 		};
-	}, [editor]);
+	}, [editor, clearActiveCommentHighlight, flushCommentHighlights, notifyHostActiveCommentChanged]);
 
 	useEffect(() => {
 		if (inlineAiOpen) {

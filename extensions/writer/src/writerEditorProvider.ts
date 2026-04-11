@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
 import { plainTextToRtf } from './rtfSerialize';
 import { rtfToPlainText } from './rtfImport';
 import type { FromWebview, ToWebview } from './protocol';
-import { CommentService, quotesLooselyMatch, resolveCommentOffsets } from './commentService';
+import { CommentService, normalizeFileResourceUri, quotesLooselyMatch, resolveCommentOffsets } from './commentService';
 import { WriterSelectionStore } from './writerSelectionStore';
 
 function isMarkdown(uri: vscode.Uri): boolean {
@@ -143,11 +143,21 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 			void webviewPanel.webview.postMessage(msg);
 		};
 
+		const notifyCommentAddedUi = () => {
+			const open = vscode.l10n.t('Open Comments');
+			void vscode.window.showInformationMessage(vscode.l10n.t('Comment added.'), open).then(selection => {
+				if (selection === open) {
+					void vscode.commands.executeCommand('vscode.writer.showComments');
+				}
+			});
+		};
+
 		const postCommentsForResource = () => {
-			const list = this._commentService.getForResource(document.uri.toString());
+			const resourceKey = normalizeFileResourceUri(document.uri.toString());
+			const list = this._commentService.getForResource(resourceKey);
 			const msg: ToWebview = {
 				type: 'commentsForResource',
-				resource: document.uri.toString(),
+				resource: resourceKey,
 				comments: list.map(c => ({
 					id: c.id,
 					body: c.body,
@@ -158,6 +168,38 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 			};
 			void webviewPanel.webview.postMessage(msg);
 		};
+
+		/** True after first `ready` + `postInitFromWorkspace` completes — avoids focus before doc is applied. */
+		let hostEditorReady = false;
+
+		const focusSub = this._commentService.onDidRequestFocusComment(ev => {
+			if (normalizeFileResourceUri(document.uri.toString()) !== ev.resource) {
+				return;
+			}
+			if (!hostEditorReady) {
+				return;
+			}
+			if (this._commentService.consumePendingFocusIfMatches(document.uri.toString(), ev.commentId)) {
+				const c = this._commentService.getCommentById(ev.commentId);
+				const msg: ToWebview = {
+					type: 'focusComment',
+					commentId: ev.commentId,
+					quote: c?.anchor.quote,
+				};
+				void webviewPanel.webview.postMessage(msg);
+			}
+		});
+
+		const clearActiveSub = this._commentService.onDidRequestClearActiveComment(ev => {
+			if (normalizeFileResourceUri(document.uri.toString()) !== ev.resource) {
+				return;
+			}
+			if (!hostEditorReady) {
+				return;
+			}
+			const msg: ToWebview = { type: 'clearActiveComment' };
+			void webviewPanel.webview.postMessage(msg);
+		});
 
 		const commentSub = this._commentService.onDidChange(() => {
 			postCommentsForResource();
@@ -268,6 +310,19 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 						scheduleDiagnostics();
 						postCommentsForResource();
 						setTimeout(() => scheduleDiagnostics(), 1200);
+						hostEditorReady = true;
+						const pending = this._commentService.tryConsumePendingFocusComment(document.uri.toString());
+						if (pending) {
+							const c = this._commentService.getCommentById(pending);
+							setTimeout(() => {
+								const msg: ToWebview = {
+									type: 'focusComment',
+									commentId: pending,
+									quote: c?.anchor.quote,
+								};
+								void webviewPanel.webview.postMessage(msg);
+							}, 80);
+						}
 					});
 					break;
 				case 'contentChanged': {
@@ -288,6 +343,9 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 				}
 				case 'selectionChanged':
 					this._selectionStore.set(document.uri, message.text);
+					break;
+				case 'activeCommentChanged':
+					this._commentService.setActiveCommentFromEditor(message.commentId);
 					break;
 				case 'inlineAiRequest':
 					void runInlineAi(message.prompt, message.selectionPlain, message.format);
@@ -353,6 +411,7 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 									body: message.body,
 								});
 								postCommentsForResource();
+								notifyCommentAddedUi();
 								break;
 							}
 
@@ -369,6 +428,7 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 										body: message.body,
 									});
 									postCommentsForResource();
+									notifyCommentAddedUi();
 									break;
 								}
 							}
@@ -411,6 +471,7 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 								body: message.body,
 							});
 							postCommentsForResource();
+							notifyCommentAddedUi();
 							break;
 						}
 
@@ -437,6 +498,7 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 							body: message.body,
 						});
 						postCommentsForResource();
+						notifyCommentAddedUi();
 					} catch {
 						void vscode.window.showErrorMessage(
 							vscode.l10n.t('Could not add comment for this document.'),
@@ -541,6 +603,8 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 			}
 			sub.dispose();
 			commentSub.dispose();
+			focusSub.dispose();
+			clearActiveSub.dispose();
 			diagSub.dispose();
 			docSub.dispose();
 			this._selectionStore.clear(document.uri);

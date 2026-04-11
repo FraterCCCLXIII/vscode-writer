@@ -170,6 +170,9 @@ export function SelectionBubbleMenu({ editor, onAskAi, onComment }: Props) {
 		editor.chain().focus().setTextSelection({ from: r.from, to: r.to }).run();
 		const extracted = getSelectionForComment(editor, writerTurndown);
 		if (!extracted) {
+			window.alert(
+				'Could not read the selection for this comment (empty or unsupported). Try selecting the text again.',
+			);
 			return;
 		}
 		onComment(body, extracted.selectionMarkdown, extracted.plainQuote);

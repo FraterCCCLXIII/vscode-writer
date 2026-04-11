@@ -38,12 +38,14 @@ function groupByResource(rows: CommentRow[]): Map<string, CommentRow[]> {
 
 function CommentsApp() {
 	const [comments, setComments] = useState<CommentRow[]>([]);
+	const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
 
 	useEffect(() => {
 		const onMsg = (e: MessageEvent) => {
-			const d = e.data as { type?: string; comments?: CommentRow[] };
+			const d = e.data as { type?: string; comments?: CommentRow[]; activeCommentId?: string | null };
 			if (d?.type === 'update' && Array.isArray(d.comments)) {
 				setComments(d.comments);
+				setActiveCommentId(typeof d.activeCommentId === 'string' ? d.activeCommentId : null);
 			}
 		};
 		window.addEventListener('message', onMsg);
@@ -59,9 +61,17 @@ function CommentsApp() {
 	});
 
 	return (
-		<div style={{ padding: '8px 10px 16px', boxSizing: 'border-box' }}>
+		<div
+			style={{ padding: '8px 10px 16px', boxSizing: 'border-box' }}
+			onMouseDown={e => {
+				if ((e.target as HTMLElement).closest('[data-writer-comment-row]')) {
+					return;
+				}
+				api.postMessage({ type: 'clearActiveComment' });
+			}}
+		>
 			{comments.length === 0 ? (
-				<p style={{ opacity: 0.8, margin: '8px 0' }}>No comments yet. Select text in Rich Writer and use the comment button.</p>
+				<p style={{ opacity: 0.8, margin: '8px 0' }}>No comments yet. Select text in Caret and use the comment button.</p>
 			) : null}
 			{keys.map(resource => (
 				<section key={resource} style={{ marginBottom: 16 }}>
@@ -87,15 +97,37 @@ function CommentsApp() {
 						{grouped.get(resource)?.[0]?.label ?? resource}
 					</div>
 					<ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-						{(grouped.get(resource) ?? []).map(c => (
+						{(grouped.get(resource) ?? []).map(c => {
+							const isActive = activeCommentId !== null && c.id === activeCommentId;
+							return (
 							<li
+								data-writer-comment-row
 								key={c.id}
 								style={{
-									border: '1px solid var(--vscode-widget-border)',
+									border: isActive
+										? '1px solid var(--vscode-focusBorder)'
+										: '1px solid var(--vscode-widget-border)',
 									borderRadius: 6,
 									padding: '8px 10px',
 									marginBottom: 8,
-									background: 'var(--vscode-editor-inactiveSelectionBackground)',
+									background: isActive
+										? 'var(--vscode-list-activeSelectionBackground)'
+										: 'var(--vscode-editor-inactiveSelectionBackground)',
+									color: isActive
+										? 'var(--vscode-list-activeSelectionForeground, var(--vscode-foreground))'
+										: undefined,
+									boxShadow: isActive ? '0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 40%, transparent)' : undefined,
+									cursor: 'pointer',
+								}}
+								role="button"
+								tabIndex={0}
+								aria-selected={isActive}
+								onClick={() => api.postMessage({ type: 'focusComment', id: c.id, resource: c.resource })}
+								onKeyDown={e => {
+									if (e.key === 'Enter' || e.key === ' ') {
+										e.preventDefault();
+										api.postMessage({ type: 'focusComment', id: c.id, resource: c.resource });
+									}
 								}}
 							>
 								<div style={{ fontSize: '12px', opacity: 0.9, marginBottom: 4 }}>{c.quotePreview || '(selection)'}</div>
@@ -111,30 +143,20 @@ function CommentsApp() {
 											cursor: 'pointer',
 											background: 'transparent',
 											border: 'none',
-											color: 'var(--vscode-textLink-foreground)',
-											padding: 0,
-										}}
-										onClick={() => api.postMessage({ type: 'open', resource: c.resource })}
-									>
-										Open
-									</button>
-									<button
-										type="button"
-										style={{
-											fontSize: '11px',
-											cursor: 'pointer',
-											background: 'transparent',
-											border: 'none',
 											color: 'var(--vscode-descriptionForeground)',
 											padding: 0,
 										}}
-										onClick={() => api.postMessage({ type: 'remove', id: c.id })}
+										onClick={e => {
+											e.stopPropagation();
+											api.postMessage({ type: 'remove', id: c.id });
+										}}
 									>
 										Remove
 									</button>
 								</div>
 							</li>
-						))}
+							);
+						})}
 					</ul>
 				</section>
 			))}

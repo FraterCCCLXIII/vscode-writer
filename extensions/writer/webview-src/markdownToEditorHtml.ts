@@ -6,7 +6,7 @@
 import { marked } from 'marked';
 import { extractFootnoteDefinitions, replaceInlineFootnoteRefs, renderFootnoteDefinitionsHtml } from './markdownFootnotes';
 
-/** Configure marked once for Rich Writer (GFM tables, strikethrough, etc.). */
+/** Configure marked once for Caret (GFM tables, strikethrough, etc.). */
 marked.use({
 	gfm: true,
 	breaks: false,

@@ -6,6 +6,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { CommentService, type WriterComment } from './commentService';
+import { WriterEditorProvider } from './writerEditorProvider';
 
 export const WRITER_COMMENTS_VIEW_ID = 'writer.commentsPanel';
 /** Same UI in the auxiliary (right) sidebar — discoverable when Secondary Side Bar is visible. */
@@ -13,6 +14,19 @@ export const WRITER_COMMENTS_VIEW_ID_RIGHT = 'writer.commentsPanel.right';
 
 function escapeHtmlAttr(value: string): string {
 	return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+/** `showTextDocument` uses the default editor (often the built-in text editor); Caret must be opened explicitly. */
+async function openResourceInCaret(uri: vscode.Uri): Promise<void> {
+	const pathLower = uri.path.toLowerCase();
+	if (pathLower.endsWith('.md') || pathLower.endsWith('.rtf')) {
+		await vscode.commands.executeCommand('vscode.openWith', uri, WriterEditorProvider.viewType, {
+			preview: false,
+		});
+		return;
+	}
+	const doc = await vscode.workspace.openTextDocument(uri);
+	await vscode.window.showTextDocument(doc, { preview: false });
 }
 
 export class CommentsViewProvider implements vscode.WebviewViewProvider {
@@ -42,7 +56,7 @@ export class CommentsViewProvider implements vscode.WebviewViewProvider {
 	<meta charset="UTF-8" />
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webviewView.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<title>Writer comments</title>
+	<title>Comments</title>
 </head>
 <body style="margin:0;padding:0;font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);color:var(--vscode-foreground);background:var(--vscode-sideBar-background);">
 	<div id="root"></div>
@@ -54,19 +68,36 @@ export class CommentsViewProvider implements vscode.WebviewViewProvider {
 		const push = () => {
 			const all = [...this._commentService.getAll()];
 			all.sort((a, b) => b.createdAt - a.createdAt);
-			void webviewView.webview.postMessage({ type: 'update', comments: serializeForWebview(all) });
+			void webviewView.webview.postMessage({
+				type: 'update',
+				comments: serializeForWebview(all),
+				activeCommentId: this._commentService.getActiveCommentId(),
+			});
 		};
 
 		webviewView.webview.onDidReceiveMessage(
 			async (msg: { type?: string; id?: string; resource?: string }) => {
-				if (msg?.type === 'open' && typeof msg.resource === 'string') {
+				if (msg?.type === 'focusComment' && typeof msg.id === 'string' && typeof msg.resource === 'string') {
+					this._commentService.scheduleFocusComment(msg.resource, msg.id);
 					try {
 						const uri = vscode.Uri.parse(msg.resource);
-						const doc = await vscode.workspace.openTextDocument(uri);
-						await vscode.window.showTextDocument(doc, { preview: false });
+						await openResourceInCaret(uri);
 					} catch {
 						void vscode.window.showErrorMessage(vscode.l10n.t('Could not open this document.'));
 					}
+					return;
+				}
+				if (msg?.type === 'open' && typeof msg.resource === 'string') {
+					try {
+						const uri = vscode.Uri.parse(msg.resource);
+						await openResourceInCaret(uri);
+					} catch {
+						void vscode.window.showErrorMessage(vscode.l10n.t('Could not open this document.'));
+					}
+					return;
+				}
+				if (msg?.type === 'clearActiveComment') {
+					this._commentService.requestClearActiveCommentHighlight();
 					return;
 				}
 				if (msg?.type === 'remove' && typeof msg.id === 'string') {
@@ -76,8 +107,7 @@ export class CommentsViewProvider implements vscode.WebviewViewProvider {
 			},
 		);
 
-		push();
-		const sub = this._commentService.onDidChange(push);
+		const sub = this._commentService.registerCommentsPanelRefresh(push);
 		webviewView.onDidDispose(() => sub.dispose());
 	}
 }

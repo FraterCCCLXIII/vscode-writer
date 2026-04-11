@@ -1,6 +1,6 @@
 {
   "name": "writer",
-  "displayName": "Rich Writer",
+  "displayName": "Caret",
   "description": "Notion-style rich text editor for Markdown and RTF files.",
   "version": "1.0.0",
   "publisher": "vscode",
@@ -36,14 +36,14 @@
       "activitybar": [
         {
           "id": "writer-sidebar",
-          "title": "Writer",
+          "title": "Comments",
           "icon": "$(comment-discussion)"
         }
       ],
       "secondarySidebar": [
         {
           "id": "writer-secondary",
-          "title": "Writer",
+          "title": "Comments",
           "icon": "$(comment-discussion)"
         }
       ]
@@ -67,7 +67,7 @@
     "customEditors": [
       {
         "viewType": "vscode.writer.editor",
-        "displayName": "Rich Writer",
+        "displayName": "Caret",
         "priority": "default",
         "selector": [
           {
@@ -87,12 +87,12 @@
       },
       {
         "command": "vscode.writer.showComments",
-        "title": "Show Writer Comments (Primary Side Bar)",
+        "title": "Show Comments (Primary Side Bar)",
         "category": "Writer"
       },
       {
         "command": "vscode.writer.showCommentsAuxiliary",
-        "title": "Show Writer Comments (Secondary Side Bar)",
+        "title": "Show Comments (Secondary Side Bar)",
         "category": "Writer"
       }
     ]

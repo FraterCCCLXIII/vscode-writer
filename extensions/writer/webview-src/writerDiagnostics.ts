@@ -18,7 +18,8 @@ export type WriterDiagnosticItem = {
 
 const pluginKey = new PluginKey<DecorationSet>('writerDiagnostics');
 
-function findTextRangeInDoc(doc: PMNode, searchText: string): { from: number; to: number } | null {
+/** Find first occurrence of `searchText` in text nodes (used for LSP + comment highlights). */
+export function findTextRangeInDoc(doc: PMNode, searchText: string): { from: number; to: number } | null {
 	const t = searchText.trim();
 	if (!t) {
 		return null;

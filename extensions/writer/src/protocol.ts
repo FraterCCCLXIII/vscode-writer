@@ -25,7 +25,8 @@ export type FromWebview =
 		end?: number;
 		/** Full plain text for RTF sync before resolving anchors. */
 		plainTextSnapshot?: string;
-	};
+	}
+	| { type: 'activeCommentChanged'; commentId: string | null };
 
 export type ToWebview =
 	| {
@@ -72,4 +73,6 @@ export type ToWebview =
 			orphaned?: boolean;
 			anchor: { start: number; end: number; quote: string };
 		}[];
-	};
+	}
+	| { type: 'focusComment'; commentId: string; quote?: string }
+	| { type: 'clearActiveComment' };

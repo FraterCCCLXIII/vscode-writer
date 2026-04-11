@@ -68,8 +68,8 @@ export function activate(context: vscode.ExtensionContext): void {
 						value += `\n\n## Current selection\n${selected}`;
 					}
 					const modelDescription = selected
-						? vscode.l10n.t('Rich Writer document for this file. When a "Current selection" section is present, change only that span (rewrite or replace inline). Do not rewrite the whole document unless the user clearly asks for a full-document pass. Prefer minimal, localized edits.')
-						: vscode.l10n.t('Rich Writer document for this file. Prefer localized edits when the user references a specific passage; do not rewrite the whole document unless the user explicitly asks.');
+						? vscode.l10n.t('Caret document for this file. When a "Current selection" section is present, change only that span (rewrite or replace inline). Do not rewrite the whole document unless the user clearly asks for a full-document pass. Prefer minimal, localized edits.')
+						: vscode.l10n.t('Caret document for this file. Prefer localized edits when the user references a specific passage; do not rewrite the whole document unless the user explicitly asks.');
 					return {
 						label: vscode.l10n.t('Writer ({0})', base),
 						resourceUri: options.resource,
@@ -100,7 +100,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.commands.registerCommand('vscode.writer.openChatWithSelection', async () => {
 			const text = selectionStore.getFocusedSelection();
 			if (!text?.trim()) {
-				void vscode.window.showInformationMessage(vscode.l10n.t('Focus the Rich Writer editor and select text to reference in chat.'));
+				void vscode.window.showInformationMessage(vscode.l10n.t('Focus the Caret editor and select text to reference in chat.'));
 				return;
 			}
 			await vscode.commands.executeCommand(CHAT_OPEN);
