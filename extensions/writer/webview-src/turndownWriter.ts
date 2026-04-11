@@ -20,6 +20,20 @@ export function createWriterTurndown(): TurndownService {
 		},
 	});
 
+	td.addRule('writerFootnoteRef', {
+		filter(node) {
+			return (
+				node.nodeType === 1 &&
+				(node as HTMLElement).nodeName === 'SUP' &&
+				(node as HTMLElement).classList.contains('writer-fn-ref')
+			);
+		},
+		replacement(_content, node) {
+			const id = (node as HTMLElement).getAttribute('data-footnote-id') || '';
+			return `[^${id}]`;
+		},
+	});
+
 	td.addRule('writerTextAlign', {
 		filter(node) {
 			if (node.nodeType !== 1) {

@@ -4,6 +4,12 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
+import { CommentService } from './commentService';
+import {
+	CommentsViewProvider,
+	WRITER_COMMENTS_VIEW_ID,
+	WRITER_COMMENTS_VIEW_ID_RIGHT,
+} from './commentsViewProvider';
 import { WriterEditorProvider } from './writerEditorProvider';
 import { WriterSelectionStore } from './writerSelectionStore';
 
@@ -14,12 +20,27 @@ export const WRITER_CHAT_CONTEXT_PROVIDER_ID = 'writerDocument';
 
 export function activate(context: vscode.ExtensionContext): void {
 	const selectionStore = new WriterSelectionStore();
+	const commentService = new CommentService(context);
+	context.subscriptions.push(commentService);
 
-	const provider = new WriterEditorProvider(context.extensionUri, selectionStore);
+	const provider = new WriterEditorProvider(context.extensionUri, selectionStore, commentService);
 	context.subscriptions.push(
 		vscode.window.registerCustomEditorProvider(WriterEditorProvider.viewType, provider, {
 			webviewOptions: { retainContextWhenHidden: true },
 		}),
+	);
+
+	context.subscriptions.push(
+		vscode.window.registerWebviewViewProvider(
+			WRITER_COMMENTS_VIEW_ID,
+			new CommentsViewProvider(context.extensionUri, commentService),
+			{ webviewOptions: { retainContextWhenHidden: true } },
+		),
+		vscode.window.registerWebviewViewProvider(
+			WRITER_COMMENTS_VIEW_ID_RIGHT,
+			new CommentsViewProvider(context.extensionUri, commentService),
+			{ webviewOptions: { retainContextWhenHidden: true } },
+		),
 	);
 
 	const docSelector: vscode.DocumentSelector = [
@@ -59,6 +80,20 @@ export function activate(context: vscode.ExtensionContext): void {
 				resolveResourceChatContext: (ctx, _token) => ctx,
 			},
 		),
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('vscode.writer.showComments', async () => {
+			await vscode.commands.executeCommand('workbench.action.focusSideBar');
+			await vscode.commands.executeCommand('workbench.view.extension.writer-sidebar');
+		}),
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('vscode.writer.showCommentsAuxiliary', async () => {
+			await vscode.commands.executeCommand('workbench.action.focusAuxiliaryBar');
+			await vscode.commands.executeCommand('workbench.view.extension.writer-secondary');
+		}),
 	);
 
 	context.subscriptions.push(

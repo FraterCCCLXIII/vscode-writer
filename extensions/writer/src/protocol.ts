@@ -11,7 +11,21 @@ export type FromWebview =
 	| { type: 'inlineAiRequest'; prompt: string; selectionPlain: string; format: 'markdown' | 'rtf' }
 	| { type: 'inlineAiCancel' }
 	| { type: 'resolveImagePaths'; paths: string[] }
-	| { type: 'saveImage'; base64: string; mimeType: string; filenameHint?: string };
+	| { type: 'saveImage'; base64: string; mimeType: string; filenameHint?: string }
+	| {
+		type: 'commentAdd';
+		resource: string;
+		selectionMarkdown: string;
+		plainQuote: string;
+		body: string;
+		/** Full Markdown matching the editor (synced to disk before anchoring). */
+		markdownSnapshot?: string;
+		/** UTF-16 offsets into `markdownSnapshot` / file text after sync. */
+		start?: number;
+		end?: number;
+		/** Full plain text for RTF sync before resolving anchors. */
+		plainTextSnapshot?: string;
+	};
 
 export type ToWebview =
 	| {
@@ -47,4 +61,15 @@ export type ToWebview =
 	| {
 		type: 'diagnostics';
 		items: { message: string; severity: number; text: string }[];
+	}
+	| {
+		type: 'commentsForResource';
+		resource: string;
+		comments: {
+			id: string;
+			body: string;
+			createdAt: number;
+			orphaned?: boolean;
+			anchor: { start: number; end: number; quote: string };
+		}[];
 	};

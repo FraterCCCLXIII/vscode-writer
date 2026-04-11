@@ -21,7 +21,9 @@
   ],
   "activationEvents": [
     "onCustomEditor:vscode.writer.editor",
-    "onChatContextProvider:vscode.writer-writerDocument"
+    "onChatContextProvider:vscode.writer-writerDocument",
+    "onView:writer.commentsPanel",
+    "onView:writer.commentsPanel.right"
   ],
   "capabilities": {
     "virtualWorkspaces": true,
@@ -30,6 +32,38 @@
     }
   },
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "writer-sidebar",
+          "title": "Writer",
+          "icon": "$(comment-discussion)"
+        }
+      ],
+      "secondarySidebar": [
+        {
+          "id": "writer-secondary",
+          "title": "Writer",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "views": {
+      "writer-sidebar": [
+        {
+          "id": "writer.commentsPanel",
+          "name": "Comments",
+          "type": "webview"
+        }
+      ],
+      "writer-secondary": [
+        {
+          "id": "writer.commentsPanel.right",
+          "name": "Comments",
+          "type": "webview"
+        }
+      ]
+    },
     "customEditors": [
       {
         "viewType": "vscode.writer.editor",
@@ -49,6 +83,16 @@
       {
         "command": "vscode.writer.openChatWithSelection",
         "title": "Open Chat with Writer Selection",
+        "category": "Writer"
+      },
+      {
+        "command": "vscode.writer.showComments",
+        "title": "Show Writer Comments (Primary Side Bar)",
+        "category": "Writer"
+      },
+      {
+        "command": "vscode.writer.showCommentsAuxiliary",
+        "title": "Show Writer Comments (Secondary Side Bar)",
         "category": "Writer"
       }
     ]

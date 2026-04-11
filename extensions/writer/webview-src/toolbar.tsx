@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Editor } from '@tiptap/core';
+import { insertWriterFootnote } from './writerFootnote';
 import {
 	AlignCenter,
 	AlignLeft,
@@ -14,6 +15,7 @@ import {
 	ArrowRightFromLine,
 	ArrowUpFromLine,
 	Bold,
+	Bookmark,
 	CheckSquare,
 	Columns2,
 	Code,
@@ -413,6 +415,13 @@ export function Toolbar({ editor, format, onPickImage }: Props) {
 						</ToolbarIconButton>
 						<ToolbarIconButton title="Insert image" active={false} onClick={onPickImage}>
 							<ImagePlus size={16} strokeWidth={2} />
+						</ToolbarIconButton>
+						<ToolbarIconButton
+							title="Insert footnote (Markdown). Reference is inserted at the caret; definition is added at the end — scroll down if you do not see it."
+							active={false}
+							onClick={() => insertWriterFootnote(editor)}
+						>
+							<Bookmark size={16} strokeWidth={2} />
 						</ToolbarIconButton>
 					</>
 				) : null}

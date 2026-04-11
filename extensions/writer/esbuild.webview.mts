@@ -11,7 +11,10 @@ const outDir = path.join(import.meta.dirname, 'media');
 
 run(
 	{
-		entryPoints: [path.join(srcDir, 'main.tsx')],
+		entryPoints: {
+			main: path.join(srcDir, 'main.tsx'),
+			commentsPanel: path.join(srcDir, 'commentsPanel.tsx'),
+		},
 		srcDir,
 		outdir: outDir,
 		additionalOptions: {

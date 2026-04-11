@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import { plainTextToRtf } from './rtfSerialize';
 import { rtfToPlainText } from './rtfImport';
 import type { FromWebview, ToWebview } from './protocol';
+import { CommentService, quotesLooselyMatch, resolveCommentOffsets } from './commentService';
 import { WriterSelectionStore } from './writerSelectionStore';
 
 function isMarkdown(uri: vscode.Uri): boolean {
@@ -73,6 +74,7 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
 		private readonly _selectionStore: WriterSelectionStore,
+		private readonly _commentService: CommentService,
 	) { }
 
 	public async resolveCustomTextEditor(
@@ -140,6 +142,26 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 		const postToWebview = (msg: ToWebview) => {
 			void webviewPanel.webview.postMessage(msg);
 		};
+
+		const postCommentsForResource = () => {
+			const list = this._commentService.getForResource(document.uri.toString());
+			const msg: ToWebview = {
+				type: 'commentsForResource',
+				resource: document.uri.toString(),
+				comments: list.map(c => ({
+					id: c.id,
+					body: c.body,
+					createdAt: c.createdAt,
+					orphaned: c.orphaned,
+					anchor: c.anchor,
+				})),
+			};
+			void webviewPanel.webview.postMessage(msg);
+		};
+
+		const commentSub = this._commentService.onDidChange(() => {
+			postCommentsForResource();
+		});
 
 		/** Bridge LSP diagnostics (e.g. Harper) into the webview — they do not paint on custom editors by default. */
 		let diagDebounce: ReturnType<typeof setTimeout> | undefined;
@@ -244,6 +266,7 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 				case 'ready':
 					void postInitFromWorkspace().then(() => {
 						scheduleDiagnostics();
+						postCommentsForResource();
 						setTimeout(() => scheduleDiagnostics(), 1200);
 					});
 					break;
@@ -290,6 +313,135 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 					}
 					const msg: ToWebview = { type: 'pathsResolved', map };
 					void webviewPanel.webview.postMessage(msg);
+					break;
+				}
+				case 'commentAdd': {
+					try {
+						const uri = vscode.Uri.parse(message.resource);
+						const hasMdSnapshot =
+							message.markdownSnapshot !== undefined &&
+							message.start !== undefined &&
+							message.end !== undefined;
+
+						if (isMarkdown(uri) && hasMdSnapshot) {
+							const snap = stripBom(message.markdownSnapshot!);
+							// Always write the webview snapshot so disk matches the editor (debounced save may lag).
+							ignoreNextDocumentChange = true;
+							const appliedSnap = await applyDiskTextToDocument(snap);
+							if (!appliedSnap) {
+								ignoreNextDocumentChange = false;
+							} else {
+								scheduleDiagnostics();
+							}
+							const doc = await vscode.workspace.openTextDocument(uri);
+							const full = stripBom(doc.getText());
+							const pq = message.plainQuote;
+
+							// Prefer search in synced file (handles CRLF vs LF; disambiguates with webview hint).
+							const resolved = resolveCommentOffsets(
+								full,
+								message.selectionMarkdown,
+								pq,
+								message.start,
+							);
+							if (resolved) {
+								this._commentService.addComment({
+									resource: message.resource,
+									start: resolved.start,
+									end: resolved.end,
+									quote: resolved.quote,
+									body: message.body,
+								});
+								postCommentsForResource();
+								break;
+							}
+
+							const start = message.start!;
+							const end = message.end!;
+							if (start >= 0 && end <= full.length && start <= end) {
+								const slice = full.slice(start, end);
+								if (pq.length === 0 || quotesLooselyMatch(slice, pq)) {
+									this._commentService.addComment({
+										resource: message.resource,
+										start,
+										end,
+										quote: pq || slice,
+										body: message.body,
+									});
+									postCommentsForResource();
+									break;
+								}
+							}
+
+							void vscode.window.showWarningMessage(
+								vscode.l10n.t(
+									'Could not locate the selection after syncing the document. Try again.',
+								),
+							);
+							break;
+						}
+
+						if (isRtf(uri) && message.plainTextSnapshot !== undefined) {
+							const rtfOut = plainTextToRtf(message.plainTextSnapshot);
+							ignoreNextDocumentChange = true;
+							const appliedRtf = await applyDiskTextToDocument(rtfOut);
+							if (!appliedRtf) {
+								ignoreNextDocumentChange = false;
+							}
+							const doc = await vscode.workspace.openTextDocument(uri);
+							const full = stripBom(doc.getText());
+							const resolved = resolveCommentOffsets(
+								full,
+								message.selectionMarkdown,
+								message.plainQuote,
+							);
+							if (!resolved) {
+								void vscode.window.showWarningMessage(
+									vscode.l10n.t(
+										'Could not locate the selection in the saved file. Save the document and try again.',
+									),
+								);
+								break;
+							}
+							this._commentService.addComment({
+								resource: message.resource,
+								start: resolved.start,
+								end: resolved.end,
+								quote: resolved.quote,
+								body: message.body,
+							});
+							postCommentsForResource();
+							break;
+						}
+
+						const doc = await vscode.workspace.openTextDocument(uri);
+						const full = stripBom(doc.getText());
+						const resolved = resolveCommentOffsets(
+							full,
+							message.selectionMarkdown,
+							message.plainQuote,
+						);
+						if (!resolved) {
+							void vscode.window.showWarningMessage(
+								vscode.l10n.t(
+									'Could not locate the selection in the saved file. Save the document and try again.',
+								),
+							);
+							break;
+						}
+						this._commentService.addComment({
+							resource: message.resource,
+							start: resolved.start,
+							end: resolved.end,
+							quote: resolved.quote,
+							body: message.body,
+						});
+						postCommentsForResource();
+					} catch {
+						void vscode.window.showErrorMessage(
+							vscode.l10n.t('Could not add comment for this document.'),
+						);
+					}
 					break;
 				}
 				case 'saveImage': {
@@ -388,6 +540,7 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 				diagDebounce = undefined;
 			}
 			sub.dispose();
+			commentSub.dispose();
 			diagSub.dispose();
 			docSub.dispose();
 			this._selectionStore.clear(document.uri);

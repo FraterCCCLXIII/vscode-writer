@@ -78,6 +78,22 @@ export const WRITER_THEME_STYLES = `
 	color: var(--vscode-editor-foreground);
 }
 
+.ProseMirror sup.writer-fn-ref {
+	font-size: 0.8em;
+	vertical-align: super;
+}
+.ProseMirror sup.writer-fn-ref a {
+	color: var(--vscode-textLink-foreground);
+	text-decoration: none;
+}
+.ProseMirror p.writer-fn-def {
+	margin-top: 1.25em;
+	padding-top: 0.5em;
+	border-top: 1px solid var(--vscode-editorWidget-border);
+	font-size: 0.95em;
+	color: var(--vscode-descriptionForeground);
+}
+
 .ProseMirror code {
 	background: var(--vscode-textCodeBlock-background);
 	padding: 0.1em 0.35em;

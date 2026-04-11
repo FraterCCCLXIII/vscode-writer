@@ -24,9 +24,16 @@ import { InlineAiPanel } from './InlineAiPanel';
 import { WRITER_THEME_STYLES } from './writerThemeStyles';
 import { WriterImage } from './writerImage';
 import { augmentImageHtml, extractImgSrcsFromHtml } from './htmlImageHelpers';
+import {
+	computeOffsetsInSnapshot,
+	getMarkdownSnapshotFromEditor,
+	getPlainSnapshotFromEditor,
+} from './commentAnchor';
+import { appendFootnoteDefsMarkdown, extractFootnoteDefsFromHtml } from './htmlFootnotes';
 import { writerTurndown } from './turndownWriter';
 import { markdownToEditorHtml } from './markdownToEditorHtml';
 import { WriterDiagnostics, type WriterDiagnosticItem } from './writerDiagnostics';
+import { WriterFootnoteDef, WriterFootnoteRef } from './writerFootnote';
 
 type VsCodeApi = { postMessage: (msg: unknown) => void };
 
@@ -41,7 +48,18 @@ type HostToWebview =
 	| { type: 'pathsResolved'; map: Record<string, string> }
 	| { type: 'imageSaved'; markdownPath: string; webviewSrc: string; alt: string }
 	| { type: 'imageSaveError'; message: string }
-	| { type: 'diagnostics'; items: WriterDiagnosticItem[] };
+	| { type: 'diagnostics'; items: WriterDiagnosticItem[] }
+	| {
+		type: 'commentsForResource';
+		resource: string;
+		comments: {
+			id: string;
+			body: string;
+			createdAt: number;
+			orphaned?: boolean;
+			anchor: { start: number; end: number; quote: string };
+		}[];
+	};
 
 function getVsCode(): VsCodeApi {
 	const w = globalThis as unknown as { __writerVsCodeApi?: VsCodeApi };
@@ -113,6 +131,7 @@ function WriterApp() {
 	const pendingHtmlRef = useRef<string | null>(null);
 	const pendingRawMdRef = useRef<string | null>(null);
 	const imageInputRef = useRef<HTMLInputElement>(null);
+	const resourceUriRef = useRef<string>('');
 
 	const pushContent = useCallback(() => {
 		if (!canPushToHostRef.current) {
@@ -125,7 +144,9 @@ function WriterApp() {
 		}
 		if (formatRef.current === 'markdown') {
 			const html = ed.getHTML();
-			const md = writerTurndown.turndown(html);
+			const { strippedHtml, defs } = extractFootnoteDefsFromHtml(html);
+			let md = writerTurndown.turndown(strippedHtml);
+			md = appendFootnoteDefsMarkdown(md, defs);
 			vscode.postMessage({ type: 'contentChanged', format: 'markdown', markdown: md });
 		} else {
 			const plain = ed.getText();
@@ -194,6 +215,8 @@ function WriterApp() {
 			}),
 			GlobalDragHandle,
 			WriterDiagnostics,
+			WriterFootnoteRef,
+			WriterFootnoteDef,
 		],
 		content: '<p></p>',
 		onUpdate: () => debouncedPushRef.current(),
@@ -223,6 +246,11 @@ function WriterApp() {
 		const onMessage = (event: MessageEvent<HostToWebview>) => {
 			const msg = event.data;
 			if (!msg || typeof msg !== 'object') {
+				return;
+			}
+
+			if (msg.type === 'commentsForResource') {
+				resourceUriRef.current = msg.resource;
 				return;
 			}
 
@@ -285,6 +313,8 @@ function WriterApp() {
 				return;
 			}
 
+			resourceUriRef.current = msg.resource;
+
 			requestAnimationFrame(() => {
 				const ed = editorRef.current;
 				if (!ed || ed.isDestroyed) {
@@ -326,7 +356,20 @@ function WriterApp() {
 		window.addEventListener('message', onMessage);
 		vscode.postMessage({ type: 'ready' });
 
-		return () => window.removeEventListener('message', onMessage);
+		// Re-send `ready` if the host doesn't respond with `init` within a grace period.
+		// This handles the rare session-restore race where the host misses the first `ready`.
+		const retryTimer = setInterval(() => {
+			if (!canPushToHostRef.current) {
+				vscode.postMessage({ type: 'ready' });
+			} else {
+				clearInterval(retryTimer);
+			}
+		}, 2000);
+
+		return () => {
+			clearInterval(retryTimer);
+			window.removeEventListener('message', onMessage);
+		};
 	}, [editor]);
 
 	useEffect(() => {
@@ -444,7 +487,49 @@ function WriterApp() {
 						onCancelStream={() => setInlineAiBusy(false)}
 					/>
 				</div>
-				<SelectionBubbleMenu editor={editor} onAskAi={() => setInlineAiOpen(true)} />
+				<SelectionBubbleMenu
+					editor={editor}
+					onAskAi={() => setInlineAiOpen(true)}
+					onComment={(body, selectionMarkdown, plainQuote) => {
+						const ed = editorRef.current;
+						if (!ed || ed.isDestroyed) {
+							return;
+						}
+						if (formatRef.current === 'markdown') {
+							const markdownSnapshot = getMarkdownSnapshotFromEditor(ed);
+							const off = computeOffsetsInSnapshot(
+								markdownSnapshot,
+								selectionMarkdown,
+								plainQuote,
+							);
+							if (!off) {
+								window.alert(
+									'Could not locate the selection in the document text. Try selecting again.',
+								);
+								return;
+							}
+							vscodeApi.postMessage({
+								type: 'commentAdd',
+								resource: resourceUriRef.current,
+								selectionMarkdown,
+								plainQuote,
+								body,
+								markdownSnapshot,
+								start: off.start,
+								end: off.end,
+							});
+						} else {
+							vscodeApi.postMessage({
+								type: 'commentAdd',
+								resource: resourceUriRef.current,
+								selectionMarkdown,
+								plainQuote,
+								body,
+								plainTextSnapshot: getPlainSnapshotFromEditor(ed),
+							});
+						}
+					}}
+				/>
 			</div>
 			<style>{WRITER_THEME_STYLES}</style>
 		</div>

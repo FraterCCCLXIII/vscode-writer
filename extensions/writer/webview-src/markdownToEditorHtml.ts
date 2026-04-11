@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { marked } from 'marked';
+import { extractFootnoteDefinitions, replaceInlineFootnoteRefs, renderFootnoteDefinitionsHtml } from './markdownFootnotes';
 
 /** Configure marked once for Rich Writer (GFM tables, strikethrough, etc.). */
 marked.use({
@@ -24,6 +25,10 @@ export function preprocessMarkdownForEditor(md: string): string {
 }
 
 export function markdownToEditorHtml(md: string): string {
-	const result = marked.parse(preprocessMarkdownForEditor(md), { async: false });
-	return typeof result === 'string' ? result : '';
+	const { body, defs } = extractFootnoteDefinitions(md);
+	const withRefs = replaceInlineFootnoteRefs(body);
+	const result = marked.parse(preprocessMarkdownForEditor(withRefs), { async: false });
+	let html = typeof result === 'string' ? result : '';
+	html += renderFootnoteDefinitionsHtml(defs);
+	return html;
 }
