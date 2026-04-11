@@ -111,11 +111,15 @@ export const WRITER_THEME_STYLES = `
 	text-decoration: underline;
 }
 .ProseMirror p.writer-fn-def {
+	margin-top: 0.35em;
+	font-size: 0.95em;
+	color: var(--vscode-descriptionForeground);
+}
+.ProseMirror :not(p.writer-fn-def) + p.writer-fn-def,
+.ProseMirror > p.writer-fn-def:first-child {
 	margin-top: 1.25em;
 	padding-top: 0.5em;
 	border-top: 1px solid var(--vscode-editorWidget-border);
-	font-size: 0.95em;
-	color: var(--vscode-descriptionForeground);
 }
 
 .ProseMirror code {

@@ -49,8 +49,9 @@ export function FootnoteHoverPopover({ editor }: Props) {
 			const def = editor.view.dom.querySelector(
 				`p.writer-fn-def[data-footnote-id="${CSS.escape(id)}"]`,
 			) as HTMLElement | null;
-			const text =
-				(def?.innerText ?? def?.textContent ?? '').replace(/\u00a0/g, ' ').trim() || '(empty)';
+			const raw =
+				(def?.innerText ?? def?.textContent ?? '').replace(/\u00a0/g, ' ').trim();
+			const text = raw.replace(/^\d+\.\s*/, '') || '(empty)';
 			const rect = sup.getBoundingClientRect();
 			setPop({
 				left: Math.max(8, Math.min(rect.left, window.innerWidth - 320)),

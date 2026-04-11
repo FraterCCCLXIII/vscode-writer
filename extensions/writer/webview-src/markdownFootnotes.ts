@@ -77,9 +77,9 @@ export function replaceInlineFootnoteRefs(body: string): string {
 }
 
 /** One footnote definition block: leading number + body (plain text; Markdown round-trip strips the number on save). */
-export function buildFootnoteDefinitionParagraphHtml(id: string, rawBody: string): string {
+export function buildFootnoteDefinitionParagraphHtml(id: string, rawBody: string, displayNumOverride?: string): string {
 	const safe = id.replace(/[^a-zA-Z0-9_-]/g, '_');
-	const n = footnoteIdToDisplayNumber(id);
+	const n = displayNumOverride ?? footnoteIdToDisplayNumber(id);
 	const text = rawBody.replace(/\r\n/g, '\n');
 	const lines = text.split('\n');
 	const firstLine = escapeHtml(lines[0] ?? '');

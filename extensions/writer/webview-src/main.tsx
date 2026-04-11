@@ -39,7 +39,7 @@ import {
 import { WriterDiagnostics, findTextRangeInDoc, type WriterDiagnosticItem } from './writerDiagnostics';
 import { FootnoteComposerModal } from './footnoteComposerModal';
 import { FootnoteHoverPopover } from './footnoteHoverPopover';
-import { insertWriterFootnote, WriterFootnoteDef, WriterFootnoteRef } from './writerFootnote';
+import { insertWriterFootnote, reconcileFootnotes, WriterFootnoteDef, WriterFootnoteRef } from './writerFootnote';
 import { getSelectionForComment } from './selectionMarkdown';
 
 type VsCodeApi = { postMessage: (msg: unknown) => void };
@@ -279,6 +279,12 @@ function WriterApp() {
 
 	const debouncedPushRef = useRef(debounce(() => pushContent(), 400));
 	const debouncedSelectionRef = useRef(debounce(() => pushSelection(), 150));
+	const debouncedReconcileRef = useRef(debounce(() => {
+		const ed = editorRef.current;
+		if (ed && !ed.isDestroyed && formatRef.current === 'markdown') {
+			reconcileFootnotes(ed);
+		}
+	}, 300));
 
 	const [inlineAiOpen, setInlineAiOpen] = useState(false);
 	const [inlineAiOutput, setInlineAiOutput] = useState('');
@@ -379,7 +385,10 @@ function WriterApp() {
 			WriterFootnoteDef,
 		],
 		content: '<p></p>',
-		onUpdate: () => debouncedPushRef.current(),
+		onUpdate: () => {
+			debouncedPushRef.current();
+			debouncedReconcileRef.current();
+		},
 		onSelectionUpdate: () => {
 			debouncedSelectionRef.current();
 			const ed = editorRef.current;
