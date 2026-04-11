@@ -26,7 +26,12 @@ export type FromWebview =
 		/** Full plain text for RTF sync before resolving anchors. */
 		plainTextSnapshot?: string;
 	}
-	| { type: 'activeCommentChanged'; commentId: string | null };
+	| { type: 'activeCommentChanged'; commentId: string | null }
+	| {
+		type: 'agentActionFailed';
+		action: 'addComment' | 'insertFootnote';
+		message: string;
+	};
 
 export type ToWebview =
 	| {
@@ -75,4 +80,6 @@ export type ToWebview =
 		}[];
 	}
 	| { type: 'focusComment'; commentId: string; quote?: string }
-	| { type: 'clearActiveComment' };
+	| { type: 'clearActiveComment' }
+	| { type: 'agentAddComment'; body: string }
+	| { type: 'agentInsertFootnote'; body?: string };

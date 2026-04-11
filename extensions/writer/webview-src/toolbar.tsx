@@ -40,6 +40,8 @@ type Props = {
 	editor: Editor;
 	format: 'markdown' | 'rtf';
 	onPickImage: () => void;
+	/** Markdown: open footnote composer (caret / selection captured when invoked). */
+	onInsertFootnote?: () => void;
 };
 
 /** Sticky chrome: no horizontal padding here so the divider can span the full webview width. */
@@ -155,7 +157,7 @@ function ToolbarIconButton({
 	);
 }
 
-export function Toolbar({ editor, format, onPickImage }: Props) {
+export function Toolbar({ editor, format, onPickImage, onInsertFootnote }: Props) {
 	const isMd = format === 'markdown';
 	const inTable = isMd && editor.isActive('table');
 	const [headingOpen, setHeadingOpen] = useState(false);
@@ -417,9 +419,11 @@ export function Toolbar({ editor, format, onPickImage }: Props) {
 							<ImagePlus size={16} strokeWidth={2} />
 						</ToolbarIconButton>
 						<ToolbarIconButton
-							title="Insert footnote (Markdown). Reference is inserted at the caret; definition is added at the end — scroll down if you do not see it."
+							title="Insert footnote (Markdown). Reference is inserted at the caret; definition is added at the end of the document."
 							active={false}
-							onClick={() => insertWriterFootnote(editor)}
+							onClick={() =>
+								onInsertFootnote ? onInsertFootnote() : insertWriterFootnote(editor)
+							}
 						>
 							<Bookmark size={16} strokeWidth={2} />
 						</ToolbarIconButton>

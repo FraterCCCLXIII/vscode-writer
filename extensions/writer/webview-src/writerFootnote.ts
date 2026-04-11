@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Mark, mergeAttributes, Node, type Editor } from '@tiptap/core';
+import { buildFootnoteDefinitionParagraphHtml, footnoteIdToDisplayNumber } from './markdownFootnotes';
 
 /** Inline reference rendered as superscript (from `[^id]` in Markdown). */
 export const WriterFootnoteRef = Mark.create({
@@ -99,24 +100,92 @@ function escapeHtmlAttr(value: string): string {
 	return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
-/** Insert a footnote reference at the selection and a definition block at the end of the document (Markdown). */
-export function insertWriterFootnote(editor: Editor): void {
+export type InsertWriterFootnoteOptions = {
+	/** Footnote body; empty becomes a non-breaking space placeholder. */
+	body?: string;
+	/**
+	 * Where to insert the reference. If omitted, uses the current selection
+	 * (caret → insert at `from`; non-empty selection → insert after `to`).
+	 */
+	range?: { from: number; to: number };
+};
+
+/**
+ * Insert a footnote reference and a definition block at the end of the document (Markdown).
+ * Prefer passing `body` from the composer; omit for a placeholder body.
+ */
+export function insertWriterFootnote(editor: Editor, options?: InsertWriterFootnoteOptions): void {
 	const id = suggestFootnoteId(editor);
 	const safe = id.replace(/[^a-zA-Z0-9_-]/g, '_');
-	// Prefer HTML so TipTap parses the mark reliably; JSON insert can be dropped by the schema.
-	const supHtml = `<sup class="writer-fn-ref" data-footnote-id="${escapeHtmlAttr(id)}"><a href="#fn-${escapeHtmlAttr(safe)}">[${escapeHtmlAttr(id)}]</a></sup>`;
-	editor.chain().focus().insertContent(supHtml).run();
+	const displayNum = footnoteIdToDisplayNumber(id);
+	const supHtml = `<sup class="writer-fn-ref" data-footnote-id="${escapeHtmlAttr(id)}"><a href="#fn-${escapeHtmlAttr(safe)}">${escapeHtmlAttr(displayNum)}</a></sup>`;
+
+	const range = options?.range;
+	const sel = editor.state.selection;
+	const from = range?.from ?? sel.from;
+	const to = range?.to ?? sel.to;
+	const empty = from === to;
+	const insertPos = empty ? from : to;
+
+	editor.chain().focus().insertContentAt(insertPos, supHtml).run();
 	const end = editor.state.doc.content.size;
-	editor
-		.chain()
-		.insertContentAt(end, {
-			type: 'writerFootnoteDef',
-			attrs: { footnoteId: id },
-			content: [{ type: 'text', text: 'Footnote text.' }],
-		})
-		.run();
-	requestAnimationFrame(() => {
-		const el = editor.view.dom.querySelector('.writer-fn-def:last-of-type');
-		el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+	const rawBody = options?.body !== undefined ? options.body : 'Footnote text.';
+	editor.chain().insertContentAt(end, buildFootnoteDefinitionParagraphHtml(id, rawBody)).run();
+}
+
+/** Scroll the definition paragraph for `footnoteId` into view. */
+export function scrollFootnoteDefIntoView(editor: Editor, footnoteId: string): void {
+	const el = editor.view.dom.querySelector(
+		`p.writer-fn-def[data-footnote-id="${CSS.escape(footnoteId)}"]`,
+	);
+	el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+/** Remove the in-text reference and the matching definition block. */
+export function deleteWriterFootnote(editor: Editor, footnoteId: string): void {
+	const ranges: { from: number; to: number }[] = [];
+
+	editor.state.doc.descendants((node, pos) => {
+		if (node.type.name === 'writerFootnoteDef' && node.attrs.footnoteId === footnoteId) {
+			ranges.push({ from: pos, to: pos + node.nodeSize });
+		}
 	});
+
+	let refStart = -1;
+	let refEnd = -1;
+	editor.state.doc.descendants((node, pos) => {
+		if (!node.isText) {
+			return;
+		}
+		const m = node.marks.find(
+			mk => mk.type.name === 'writerFootnoteRef' && mk.attrs.footnoteId === footnoteId,
+		);
+		if (!m) {
+			return;
+		}
+		const a = pos;
+		const b = pos + node.nodeSize;
+		if (refStart < 0) {
+			refStart = a;
+			refEnd = b;
+		} else {
+			refStart = Math.min(refStart, a);
+			refEnd = Math.max(refEnd, b);
+		}
+	});
+
+	if (refStart >= 0) {
+		ranges.push({ from: refStart, to: refEnd });
+	}
+
+	if (ranges.length === 0) {
+		return;
+	}
+
+	ranges.sort((a, b) => b.from - a.from);
+	let chain = editor.chain().focus();
+	for (const r of ranges) {
+		chain = chain.deleteRange({ from: r.from, to: r.to });
+	}
+	chain.run();
 }

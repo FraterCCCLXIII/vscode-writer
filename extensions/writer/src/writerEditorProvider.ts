@@ -9,6 +9,7 @@ import { plainTextToRtf } from './rtfSerialize';
 import { rtfToPlainText } from './rtfImport';
 import type { FromWebview, ToWebview } from './protocol';
 import { CommentService, normalizeFileResourceUri, quotesLooselyMatch, resolveCommentOffsets } from './commentService';
+import { registerWriterPanel, unregisterWriterPanel } from './writerPanelRegistry';
 import { WriterSelectionStore } from './writerSelectionStore';
 
 function isMarkdown(uri: vscode.Uri): boolean {
@@ -93,6 +94,7 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 		};
 
 		webviewPanel.webview.html = this._getHtml(webviewPanel.webview);
+		registerWriterPanel(document.uri, webviewPanel);
 
 		let applyingFromWebview = false;
 		let ignoreNextDocumentChange = false;
@@ -544,6 +546,12 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 					}
 					break;
 				}
+				case 'agentActionFailed': {
+					if (typeof message.message === 'string' && message.message.length > 0) {
+						void vscode.window.showWarningMessage(message.message);
+					}
+					break;
+				}
 				default:
 					break;
 			}
@@ -594,6 +602,7 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 		});
 
 		webviewPanel.onDidDispose(() => {
+			unregisterWriterPanel(document.uri);
 			inlineAiCts?.cancel();
 			inlineAiCts?.dispose();
 			inlineAiCts = undefined;

@@ -94,6 +94,16 @@
         "command": "vscode.writer.showCommentsAuxiliary",
         "title": "Show Comments (Secondary Side Bar)",
         "category": "Writer"
+      },
+      {
+        "command": "vscode.writer.addComment",
+        "title": "Add Caret Comment (agent)",
+        "category": "Writer"
+      },
+      {
+        "command": "vscode.writer.insertFootnote",
+        "title": "Insert Footnote (agent)",
+        "category": "Writer"
       }
     ]
   },

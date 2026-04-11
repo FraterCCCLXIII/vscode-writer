@@ -5,6 +5,8 @@
 
 import * as vscode from 'vscode';
 import { CommentService } from './commentService';
+import type { ToWebview } from './protocol';
+import { getWriterPanel } from './writerPanelRegistry';
 import {
 	CommentsViewProvider,
 	WRITER_COMMENTS_VIEW_ID,
@@ -105,6 +107,66 @@ export function activate(context: vscode.ExtensionContext): void {
 			}
 			await vscode.commands.executeCommand(CHAT_OPEN);
 		}),
+	);
+
+	/** Lets agents (and keybindings) add a Caret comment without using the floating toolbar. */
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			'vscode.writer.addComment',
+			async (args?: { body?: string }) => {
+				const body = typeof args?.body === 'string' ? args.body.trim() : '';
+				if (!body) {
+					void vscode.window.showWarningMessage(
+						vscode.l10n.t(
+							'Pass comment text in the command argument, for example: vscode.writer.addComment with { "body": "Your note" }',
+						),
+					);
+					return;
+				}
+				const te = vscode.window.activeTextEditor;
+				if (!te) {
+					void vscode.window.showWarningMessage(vscode.l10n.t('Open a document in the Caret editor.'));
+					return;
+				}
+				const panel = getWriterPanel(te.document.uri);
+				if (!panel) {
+					void vscode.window.showWarningMessage(
+						vscode.l10n.t(
+							'Open this file with the Caret editor (Reopen Editor With…), not the built-in text editor.',
+						),
+					);
+					return;
+				}
+				const msg: ToWebview = { type: 'agentAddComment', body };
+				void panel.webview.postMessage(msg);
+			},
+		),
+	);
+
+	/** Lets agents insert a Markdown footnote at the caret or after the current selection. */
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			'vscode.writer.insertFootnote',
+			async (args?: { body?: string }) => {
+				const te = vscode.window.activeTextEditor;
+				if (!te) {
+					void vscode.window.showWarningMessage(vscode.l10n.t('Open a document in the Caret editor.'));
+					return;
+				}
+				const panel = getWriterPanel(te.document.uri);
+				if (!panel) {
+					void vscode.window.showWarningMessage(
+						vscode.l10n.t(
+							'Open this file with the Caret editor (Reopen Editor With…), not the built-in text editor.',
+						),
+					);
+					return;
+				}
+				const body = typeof args?.body === 'string' ? args.body : undefined;
+				const msg: ToWebview = { type: 'agentInsertFootnote', body };
+				void panel.webview.postMessage(msg);
+			},
+		),
 	);
 }
 

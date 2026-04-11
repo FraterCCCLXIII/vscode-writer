@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { isTextSelection, posToDOMRect, type Editor } from '@tiptap/core';
-import { Bold, Italic, MessageSquare, Sparkles, Underline } from 'lucide-react';
+import { Bold, Bookmark, Italic, MessageSquare, Sparkles, Underline } from 'lucide-react';
 import {
 	useCallback,
 	useEffect,
@@ -16,9 +16,12 @@ import {
 } from 'react';
 import { getSelectionForComment } from './selectionMarkdown';
 import { writerTurndown } from './turndownWriter';
+import { insertWriterFootnote } from './writerFootnote';
 
 type Props = {
 	editor: Editor;
+	/** Footnotes are Markdown-only (serialized as [^id] / definitions). */
+	format: 'markdown' | 'rtf';
 	onAskAi: () => void;
 	/** Called with comment body and selection payload after restoring the saved range. */
 	onComment: (body: string, selectionMarkdown: string, plainQuote: string) => void;
@@ -102,17 +105,20 @@ function shouldShowFloatingToolbar(editor: Editor): boolean {
  * Floating selection toolbar without Tippy: VS Code webviews often break popper hit-testing
  * (pointer-events / stacking) when the menu is portaled to document.body.
  */
-export function SelectionBubbleMenu({ editor, onAskAi, onComment }: Props) {
+export function SelectionBubbleMenu({ editor, format, onAskAi, onComment }: Props) {
 	const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 	const [commentOpen, setCommentOpen] = useState(false);
+	const [footnoteOpen, setFootnoteOpen] = useState(false);
 	const [commentDraft, setCommentDraft] = useState('');
+	const [footnoteDraft, setFootnoteDraft] = useState('');
 	const savedRangeRef = useRef<{ from: number; to: number } | null>(null);
 	const commentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+	const footnoteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const rafRef = useRef(0);
 
 	const updatePosition = useCallback(() => {
 		const saved = savedRangeRef.current;
-		const useSavedRange = commentOpen && saved;
+		const useSavedRange = (commentOpen || footnoteOpen) && saved;
 		if (!useSavedRange && !shouldShowFloatingToolbar(editor)) {
 			setPos(null);
 			return;
@@ -126,7 +132,7 @@ export function SelectionBubbleMenu({ editor, onAskAi, onComment }: Props) {
 		}
 		const left = domRect.left + domRect.width / 2;
 		setPos({ top, left });
-	}, [editor, commentOpen]);
+	}, [editor, commentOpen, footnoteOpen]);
 
 	const scheduleUpdate = useCallback(() => {
 		cancelAnimationFrame(rafRef.current);
@@ -157,6 +163,12 @@ export function SelectionBubbleMenu({ editor, onAskAi, onComment }: Props) {
 		}
 	}, [commentOpen]);
 
+	useEffect(() => {
+		if (footnoteOpen) {
+			queueMicrotask(() => footnoteTextareaRef.current?.focus());
+		}
+	}, [footnoteOpen]);
+
 	if (!pos) {
 		return null;
 	}
@@ -181,10 +193,26 @@ export function SelectionBubbleMenu({ editor, onAskAi, onComment }: Props) {
 		savedRangeRef.current = null;
 	};
 
+	const submitFootnote = () => {
+		const r = savedRangeRef.current;
+		const body = footnoteDraft;
+		if (!r) {
+			return;
+		}
+		insertWriterFootnote(editor, { body, range: r });
+		setFootnoteOpen(false);
+		setFootnoteDraft('');
+		savedRangeRef.current = null;
+	};
+
 	/** Parent preventDefault keeps TipTap selection; must skip for inputs or the textarea cannot focus. */
 	const onToolbarMouseDown = (e: MouseEvent<HTMLDivElement>) => {
 		const t = e.target as HTMLElement;
-		if (t.closest('textarea, input, select, [data-writer-comment-composer="true"]')) {
+		if (
+			t.closest(
+				'textarea, input, select, [data-writer-comment-composer="true"], [data-writer-footnote-composer="true"]',
+			)
+		) {
 			return;
 		}
 		e.preventDefault();
@@ -221,11 +249,26 @@ export function SelectionBubbleMenu({ editor, onAskAi, onComment }: Props) {
 						onClick={() => {
 							const { from, to } = editor.state.selection;
 							savedRangeRef.current = { from, to };
+							setFootnoteOpen(false);
 							setCommentOpen(true);
 						}}
 					>
 						<MessageSquare size={16} strokeWidth={2} />
 					</Btn>
+					{format === 'markdown' ? (
+						<Btn
+							title="Insert footnote — reference after selection; definition at end of document"
+							onClick={() => {
+								const { from, to } = editor.state.selection;
+								savedRangeRef.current = { from, to };
+								setCommentOpen(false);
+								setFootnoteDraft('');
+								setFootnoteOpen(true);
+							}}
+						>
+							<Bookmark size={16} strokeWidth={2} />
+						</Btn>
+					) : null}
 					<Btn title="Ask AI" onClick={onAskAi}>
 						<Sparkles size={16} strokeWidth={2} />
 					</Btn>
@@ -276,6 +319,60 @@ export function SelectionBubbleMenu({ editor, onAskAi, onComment }: Props) {
 							</button>
 							<button type="button" onClick={() => submitComment()} style={{ cursor: 'pointer' }}>
 								Add comment
+							</button>
+						</div>
+					</div>
+				) : null}
+				{footnoteOpen ? (
+					<div
+						data-writer-footnote-composer="true"
+						style={{
+							...bar,
+							flexDirection: 'column',
+							alignItems: 'stretch',
+							minWidth: 260,
+							padding: 8,
+						}}
+						onMouseDown={e => e.stopPropagation()}
+					>
+						<label htmlFor="writer-footnote-draft" style={{ fontSize: 11, marginBottom: 4 }}>
+							Footnote
+						</label>
+						<p style={{ margin: '0 0 6px', fontSize: 11, opacity: 0.85 }}>
+							Text is added at the bottom of the document; you can edit or delete it there.
+						</p>
+						<textarea
+							ref={footnoteTextareaRef}
+							id="writer-footnote-draft"
+							value={footnoteDraft}
+							onChange={e => setFootnoteDraft(e.target.value)}
+							rows={4}
+							placeholder="Footnote text…"
+							style={{
+								resize: 'vertical',
+								fontFamily: 'var(--vscode-font-family)',
+								fontSize: 'var(--vscode-font-size)',
+								color: 'var(--vscode-input-foreground)',
+								background: 'var(--vscode-input-background)',
+								border: '1px solid var(--vscode-input-border)',
+								borderRadius: 4,
+								padding: 6,
+							}}
+						/>
+						<div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+							<button
+								type="button"
+								onClick={() => {
+									setFootnoteOpen(false);
+									setFootnoteDraft('');
+									savedRangeRef.current = null;
+								}}
+								style={{ cursor: 'pointer' }}
+							>
+								Cancel
+							</button>
+							<button type="button" onClick={() => submitFootnote()} style={{ cursor: 'pointer' }}>
+								Add footnote
 							</button>
 						</div>
 					</div>

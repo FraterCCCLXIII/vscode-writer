@@ -3,6 +3,18 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { footnoteIdToDisplayNumber } from './markdownFootnotes';
+
+function escapeRegExp(s: string): string {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Strip leading "1. " style prefix from saved defs so Markdown does not duplicate the number. */
+function stripFootnoteDefDisplayPrefix(id: string, text: string): string {
+	const n = footnoteIdToDisplayNumber(id);
+	return text.replace(new RegExp(`^\\s*${escapeRegExp(n)}\\.\\s*`), '');
+}
+
 /**
  * Remove footnote definition blocks from editor HTML and return them for Markdown serialization.
  * (Turndown matches generic `p` before custom rules, so we strip defs before turndown.)
@@ -20,8 +32,9 @@ export function extractFootnoteDefsFromHtml(html: string): {
 	const defs: { id: string; text: string }[] = [];
 	root.querySelectorAll('p.writer-fn-def').forEach(p => {
 		const id = p.getAttribute('data-footnote-id') ?? '';
-		const text = (p.textContent ?? '').replace(/\u00a0/g, ' ');
+		let text = (p.textContent ?? '').replace(/\u00a0/g, ' ');
 		if (id) {
+			text = stripFootnoteDefDisplayPrefix(id, text);
 			defs.push({ id, text });
 		}
 		p.remove();

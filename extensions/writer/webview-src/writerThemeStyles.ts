@@ -107,6 +107,9 @@ export const WRITER_THEME_STYLES = `
 	color: var(--vscode-textLink-foreground);
 	text-decoration: none;
 }
+.ProseMirror sup.writer-fn-ref a:hover {
+	text-decoration: underline;
+}
 .ProseMirror p.writer-fn-def {
 	margin-top: 1.25em;
 	padding-top: 0.5em;

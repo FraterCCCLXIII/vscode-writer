@@ -37,7 +37,10 @@ import {
 	type WriterCommentHighlightItem,
 } from './writerCommentHighlights';
 import { WriterDiagnostics, findTextRangeInDoc, type WriterDiagnosticItem } from './writerDiagnostics';
-import { WriterFootnoteDef, WriterFootnoteRef } from './writerFootnote';
+import { FootnoteComposerModal } from './footnoteComposerModal';
+import { FootnoteHoverPopover } from './footnoteHoverPopover';
+import { insertWriterFootnote, WriterFootnoteDef, WriterFootnoteRef } from './writerFootnote';
+import { getSelectionForComment } from './selectionMarkdown';
 
 type VsCodeApi = { postMessage: (msg: unknown) => void };
 
@@ -65,7 +68,9 @@ type HostToWebview =
 		}[];
 	}
 	| { type: 'focusComment'; commentId: string; quote?: string }
-	| { type: 'clearActiveComment' };
+	| { type: 'clearActiveComment' }
+	| { type: 'agentAddComment'; body: string }
+	| { type: 'agentInsertFootnote'; body?: string };
 
 function getVsCode(): VsCodeApi {
 	const w = globalThis as unknown as { __writerVsCodeApi?: VsCodeApi };
@@ -280,6 +285,18 @@ function WriterApp() {
 	const [inlineAiBusy, setInlineAiBusy] = useState(false);
 	const [inlineAiError, setInlineAiError] = useState<string | null>(null);
 	const [docFormat, setDocFormat] = useState<'markdown' | 'rtf'>('markdown');
+	const [footnoteModalOpen, setFootnoteModalOpen] = useState(false);
+	const footnoteRangeRef = useRef<{ from: number; to: number } | null>(null);
+
+	const openFootnoteModal = useCallback(() => {
+		const ed = editorRef.current;
+		if (!ed || ed.isDestroyed) {
+			return;
+		}
+		const { from, to } = ed.state.selection;
+		footnoteRangeRef.current = { from, to };
+		setFootnoteModalOpen(true);
+	}, []);
 
 	const editor = useEditor({
 		// Webview is always client-side; avoid a null editor on first paint (breaks init timing vs. marked HTML).
@@ -373,6 +390,52 @@ function WriterApp() {
 	});
 
 	editorRef.current = editor;
+
+	const sendCommentAddToHost = useCallback(
+		(body: string, selectionMarkdown: string, plainQuote: string): boolean => {
+			if (!body.trim()) {
+				return false;
+			}
+			const ed = editorRef.current;
+			if (!ed || ed.isDestroyed) {
+				return false;
+			}
+			let vscodeApi: VsCodeApi;
+			try {
+				vscodeApi = getVsCode();
+			} catch {
+				return false;
+			}
+			if (formatRef.current === 'markdown') {
+				const markdownSnapshot = getMarkdownSnapshotFromEditor(ed);
+				const off = computeOffsetsInSnapshot(markdownSnapshot, selectionMarkdown, plainQuote);
+				if (!off) {
+					return false;
+				}
+				vscodeApi.postMessage({
+					type: 'commentAdd',
+					resource: resourceUriRef.current,
+					selectionMarkdown,
+					plainQuote,
+					body,
+					markdownSnapshot,
+					start: off.start,
+					end: off.end,
+				});
+			} else {
+				vscodeApi.postMessage({
+					type: 'commentAdd',
+					resource: resourceUriRef.current,
+					selectionMarkdown,
+					plainQuote,
+					body,
+					plainTextSnapshot: getPlainSnapshotFromEditor(ed),
+				});
+			}
+			return true;
+		},
+		[],
+	);
 
 	useEffect(() => {
 		debouncedPushRef.current = debounce(() => pushContent(), 400);
@@ -514,6 +577,65 @@ function WriterApp() {
 				return;
 			}
 
+			if (msg.type === 'agentAddComment') {
+				const body = typeof msg.body === 'string' ? msg.body : '';
+				const ed = editorRef.current;
+				let vscodeApi: VsCodeApi;
+				try {
+					vscodeApi = getVsCode();
+				} catch {
+					return;
+				}
+				if (!ed || ed.isDestroyed) {
+					return;
+				}
+				const extracted = getSelectionForComment(ed, writerTurndown);
+				if (!extracted) {
+					vscodeApi.postMessage({
+						type: 'agentActionFailed',
+						action: 'addComment',
+						message:
+							'Select text in the Caret editor first, then run the Writer: Add Caret Comment (agent) command again.',
+					});
+					return;
+				}
+				const ok = sendCommentAddToHost(body.trim(), extracted.selectionMarkdown, extracted.plainQuote);
+				if (!ok) {
+					vscodeApi.postMessage({
+						type: 'agentActionFailed',
+						action: 'addComment',
+						message:
+							'Could not locate the selection in the document. Save the file and try again, or reselect the text.',
+					});
+				}
+				return;
+			}
+
+			if (msg.type === 'agentInsertFootnote') {
+				const ed = editorRef.current;
+				let vscodeApi: VsCodeApi;
+				try {
+					vscodeApi = getVsCode();
+				} catch {
+					return;
+				}
+				if (!ed || ed.isDestroyed) {
+					return;
+				}
+				if (formatRef.current !== 'markdown') {
+					vscodeApi.postMessage({
+						type: 'agentActionFailed',
+						action: 'insertFootnote',
+						message: 'Footnotes are only available for Markdown documents in Caret.',
+					});
+					return;
+				}
+				const rawBody = typeof msg.body === 'string' ? msg.body : '';
+				const { from, to } = ed.state.selection;
+				insertWriterFootnote(ed, { body: rawBody, range: { from, to } });
+				return;
+			}
+
 			if (msg.type !== 'init' && msg.type !== 'documentChanged') {
 				return;
 			}
@@ -577,7 +699,7 @@ function WriterApp() {
 			clearInterval(retryTimer);
 			window.removeEventListener('message', onMessage);
 		};
-	}, [editor, clearActiveCommentHighlight, flushCommentHighlights, notifyHostActiveCommentChanged]);
+	}, [editor, clearActiveCommentHighlight, flushCommentHighlights, notifyHostActiveCommentChanged, sendCommentAddToHost]);
 
 	useEffect(() => {
 		if (inlineAiOpen) {
@@ -655,6 +777,18 @@ function WriterApp() {
 				editor={editor}
 				format={docFormat}
 				onPickImage={() => imageInputRef.current?.click()}
+				onInsertFootnote={docFormat === 'markdown' ? openFootnoteModal : undefined}
+			/>
+			<FootnoteComposerModal
+				open={footnoteModalOpen}
+				onClose={() => setFootnoteModalOpen(false)}
+				onConfirm={body => {
+					const ed = editorRef.current;
+					if (!ed || ed.isDestroyed) {
+						return;
+					}
+					insertWriterFootnote(ed, { body, range: footnoteRangeRef.current ?? undefined });
+				}}
 			/>
 			<div
 				className="writer-editor-scroll"
@@ -696,47 +830,18 @@ function WriterApp() {
 				</div>
 				<SelectionBubbleMenu
 					editor={editor}
+					format={docFormat}
 					onAskAi={() => setInlineAiOpen(true)}
 					onComment={(body, selectionMarkdown, plainQuote) => {
-						const ed = editorRef.current;
-						if (!ed || ed.isDestroyed) {
-							return;
-						}
-						if (formatRef.current === 'markdown') {
-							const markdownSnapshot = getMarkdownSnapshotFromEditor(ed);
-							const off = computeOffsetsInSnapshot(
-								markdownSnapshot,
-								selectionMarkdown,
-								plainQuote,
+						const ok = sendCommentAddToHost(body.trim(), selectionMarkdown, plainQuote);
+						if (!ok) {
+							window.alert(
+								'Could not locate the selection in the document text. Try selecting again.',
 							);
-							if (!off) {
-								window.alert(
-									'Could not locate the selection in the document text. Try selecting again.',
-								);
-								return;
-							}
-							vscodeApi.postMessage({
-								type: 'commentAdd',
-								resource: resourceUriRef.current,
-								selectionMarkdown,
-								plainQuote,
-								body,
-								markdownSnapshot,
-								start: off.start,
-								end: off.end,
-							});
-						} else {
-							vscodeApi.postMessage({
-								type: 'commentAdd',
-								resource: resourceUriRef.current,
-								selectionMarkdown,
-								plainQuote,
-								body,
-								plainTextSnapshot: getPlainSnapshotFromEditor(ed),
-							});
 						}
 					}}
 				/>
+				<FootnoteHoverPopover editor={editor} />
 			</div>
 			<style>{WRITER_THEME_STYLES}</style>
 		</div>
