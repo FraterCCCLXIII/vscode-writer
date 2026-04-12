@@ -31,5 +31,10 @@ export function augmentImageHtml(html: string, map: Record<string, string>): str
 			img.setAttribute('src', resolved);
 		}
 	});
-	return doc.body.innerHTML;
+	const out = doc.body?.innerHTML ?? '';
+	// DOMParser edge cases can yield an empty body even when the fragment had content; keep the original HTML.
+	if (!out.trim() && html.trim()) {
+		return html;
+	}
+	return out;
 }

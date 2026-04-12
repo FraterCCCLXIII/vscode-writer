@@ -60,6 +60,12 @@ await vscode.commands.executeCommand('vscode.writer.insertFootnote', {
 
 For non-Markdown documents, the webview reports that footnotes are Markdown-only.
 
+## Copilot / Chat: `writer_addCaretComment` (language model tool)
+
+The Writer extension contributes a **`languageModelTool`** named **`writer_addCaretComment`** (registered in `extensions/writer/package.json` and `writerLanguageModelTools.ts`). In **Chat with tools / Agent mode**, the model can call this tool with input `{ "body": "…" }` — same contract as `vscode.writer.addComment`. Users can also attach it with **`#caretComment`** when `canBeReferencedInPrompt` applies.
+
+The tool does not replace selection: the user must **select text in Caret** before the model invokes the tool, and the file must be open in the **Caret** custom editor. The model should describe comments clearly in `body`.
+
 ## Implementation notes (for maintainers)
 
 - Host posts `agentAddComment` / `agentInsertFootnote` to the Caret webview; the webview reuses the same `commentAdd` pipeline as the selection bubble or calls `insertWriterFootnote`.

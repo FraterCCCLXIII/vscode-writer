@@ -17,6 +17,9 @@ import { VIEWLET_ID } from '../../debug/common/debug.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
 import { InEditorZenModeContext, IsSessionsWindowContext } from '../../../common/contextkeys.js';
 import { IWorkbenchEnvironmentService } from '../../../services/environment/common/environmentService.js';
+import { IExtensionService } from '../../../services/extensions/common/extensions.js';
+import { IViewsService } from '../../../services/views/common/viewsService.js';
+import { ViewContainerLocation } from '../../../common/views.js';
 import { EditorTabsMode, LayoutSettings } from '../../../services/layout/browser/layoutService.js';
 import { workbenchConfigurationNodeBase } from '../../../common/configuration.js';
 
@@ -203,6 +206,8 @@ class WriterRunAndDebugActivityContribution extends Disposable implements IWorkb
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IStorageService private readonly storageService: IStorageService,
 		@IWorkbenchEnvironmentService private readonly environmentService: IWorkbenchEnvironmentService,
+		@IExtensionService private readonly extensionService: IExtensionService,
+		@IViewsService private readonly viewsService: IViewsService,
 	) {
 		super();
 		const scheduleApply = () => {
@@ -217,8 +222,25 @@ class WriterRunAndDebugActivityContribution extends Disposable implements IWorkb
 				scheduleApply();
 			}
 		}));
-		queueMicrotask(() => scheduleApply());
-		setTimeout(() => scheduleApply(), 0);
+		// Opening Run and Debug (including session restore) runs PaneCompositeBar.onDidViewContainerVisible,
+		// which calls addComposite() and forces the activity icon visible again, then saveCachedViewContainers
+		// persists visible:true. Re-apply after that synchronous path so the icon stays hidden when desired.
+		this._register(this.viewsService.onDidChangeViewContainerVisibility(e => {
+			if (e.id !== VIEWLET_ID || e.location !== ViewContainerLocation.Sidebar || !e.visible) {
+				return;
+			}
+			if (this.environmentService.isSessionsWindow) {
+				return;
+			}
+			if (this.configurationService.getValue<boolean>(SHOW_RUN_DEBUG_ACTIVITY_KEY) ?? false) {
+				return;
+			}
+			queueMicrotask(() => scheduleApply());
+		}));
+		// Apply after extensions are registered so we run after PaneCompositeBar's
+		// onDidRegisterExtensions(), which re-shows all non-empty view containers and
+		// registers the storage-change listener we depend on.
+		this.extensionService.whenInstalledExtensionsRegistered().then(() => scheduleApply());
 	}
 }
 

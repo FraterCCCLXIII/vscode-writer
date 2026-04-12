@@ -13,6 +13,7 @@ import {
 	WRITER_COMMENTS_VIEW_ID_RIGHT,
 } from './commentsViewProvider';
 import { WriterEditorProvider } from './writerEditorProvider';
+import { registerWriterLanguageModelTools } from './writerLanguageModelTools';
 import { WriterSelectionStore } from './writerSelectionStore';
 
 const CHAT_OPEN = 'workbench.action.chat.open';
@@ -49,6 +50,8 @@ export function activate(context: vscode.ExtensionContext): void {
 		{ scheme: 'file', pattern: '**/*.md' },
 		{ scheme: 'file', pattern: '**/*.rtf' },
 	];
+
+	registerWriterLanguageModelTools(context);
 
 	context.subscriptions.push(
 		vscode.chat.registerChatResourceContextProvider(

@@ -65,7 +65,15 @@ function sanitizeBasename(name: string): string {
 
 function resolvePathRelativeToDocument(documentUri: vscode.Uri, relativePath: string): vscode.Uri {
 	const dir = path.dirname(documentUri.fsPath);
-	const resolved = path.normalize(path.join(dir, relativePath));
+	let rel = relativePath.replace(/\\/g, '/');
+	if (/%[0-9A-Fa-f]{2}/.test(rel)) {
+		try {
+			rel = decodeURIComponent(rel);
+		} catch {
+			// keep rel as-is
+		}
+	}
+	const resolved = path.normalize(path.join(dir, rel));
 	return vscode.Uri.file(resolved);
 }
 
@@ -600,7 +608,19 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 							const abs = resolvePathRelativeToDocument(document.uri, p);
 							const stat = await vscode.workspace.fs.stat(abs);
 							if (stat.type === vscode.FileType.File) {
-								map[p] = webviewPanel.webview.asWebviewUri(abs).toString();
+								const uri = webviewPanel.webview.asWebviewUri(abs).toString();
+								map[p] = uri;
+								// DOM `getAttribute('src')` may decode `%20` while extractImgSrcsFromHtml uses the raw attribute string.
+								if (/%[0-9A-Fa-f]{2}/.test(p)) {
+									try {
+										const decoded = decodeURIComponent(p);
+										if (decoded !== p) {
+											map[decoded] = uri;
+										}
+									} catch {
+										// ignore
+									}
+								}
 							}
 						} catch {
 							// ignore missing or invalid paths

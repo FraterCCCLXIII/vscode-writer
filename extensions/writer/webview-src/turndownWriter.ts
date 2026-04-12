@@ -6,6 +6,21 @@
 import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
 
+/**
+ * Format an image destination for Markdown so parsers (marked / GFM) emit real `<img>` nodes.
+ * Unescaped whitespace in `![](path)` is not parsed as an image — use `![](<path>)` instead.
+ */
+function formatMarkdownImageDestination(dest: string): string {
+	const d = dest.trim();
+	if (!d) {
+		return d;
+	}
+	if (/\s/.test(d)) {
+		return `<${d}>`;
+	}
+	return d;
+}
+
 export function createWriterTurndown(): TurndownService {
 	const td = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
 	td.use(gfm);
@@ -16,7 +31,7 @@ export function createWriterTurndown(): TurndownService {
 			const el = node as HTMLElement;
 			const mdSrc = el.getAttribute('data-md-src') || el.getAttribute('src') || '';
 			const alt = el.getAttribute('alt') || '';
-			return `![${alt}](${mdSrc})`;
+			return `![${alt}](${formatMarkdownImageDestination(mdSrc)})`;
 		},
 	});
 

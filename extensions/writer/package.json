@@ -22,6 +22,7 @@
   "activationEvents": [
     "onCustomEditor:vscode.writer.editor",
     "onChatContextProvider:vscode.writer-writerDocument",
+    "onLanguageModelTool:writer_addCaretComment",
     "onView:writer.commentsPanel",
     "onView:writer.commentsPanel.right"
   ],
@@ -104,6 +105,35 @@
         "command": "vscode.writer.insertFootnote",
         "title": "Insert Footnote (agent)",
         "category": "Writer"
+      }
+    ],
+    "languageModelTools": [
+      {
+        "name": "writer_addCaretComment",
+        "displayName": "Add Caret comment",
+        "toolReferenceName": "caretComment",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(comment-discussion)",
+        "tags": [
+          "writer",
+          "caret",
+          "comments",
+          "review"
+        ],
+        "modelDescription": "Adds a Writer/Caret review comment anchored to the user's current text selection in the Caret editor. Comments are stored in the Writer Comments side bar (not inline in the Markdown file). Requires the document to be open in the Caret custom editor (not the built-in text editor) and a non-empty selection when invoked. Use when the user wants feedback, review notes, or discussion attached to a specific passage.",
+        "userDescription": "Add a Caret review comment on the selected text (Writer Comments panel).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "string",
+              "description": "The full text of the review comment to attach to the current selection."
+            }
+          },
+          "required": [
+            "body"
+          ]
+        }
       }
     ]
   },
