@@ -41,6 +41,8 @@ import { FootnoteComposerModal } from './footnoteComposerModal';
 import { FootnoteHoverPopover } from './footnoteHoverPopover';
 import { insertWriterFootnote, reconcileFootnotes, WriterFootnoteDef, WriterFootnoteRef } from './writerFootnote';
 import { getSelectionForComment } from './selectionMarkdown';
+import { WriteNextButton, extractContext } from './WriteNextButton';
+import { WriterGhostText, type GhostTextRange } from './writerGhostText';
 
 type VsCodeApi = { postMessage: (msg: unknown) => void };
 
@@ -70,7 +72,11 @@ type HostToWebview =
 	| { type: 'focusComment'; commentId: string; quote?: string }
 	| { type: 'clearActiveComment' }
 	| { type: 'agentAddComment'; body: string }
-	| { type: 'agentInsertFootnote'; body?: string };
+	| { type: 'agentInsertFootnote'; body?: string }
+	| { type: 'writeNextDelta'; text: string }
+	| { type: 'writeNextDone' }
+	| { type: 'writeNextError'; message: string }
+	| { type: 'writeNextStatus'; message: string };
 
 function getVsCode(): VsCodeApi {
 	const w = globalThis as unknown as { __writerVsCodeApi?: VsCodeApi };
@@ -291,6 +297,86 @@ function WriterApp() {
 	const [inlineAiBusy, setInlineAiBusy] = useState(false);
 	const [inlineAiError, setInlineAiError] = useState<string | null>(null);
 	const [docFormat, setDocFormat] = useState<'markdown' | 'rtf'>('markdown');
+
+	const [writeNextBusy, setWriteNextBusy] = useState(false);
+	const [writeNextStreaming, setWriteNextStreaming] = useState(false);
+	const [writeNextError, setWriteNextError] = useState<string | null>(null);
+	const [writeNextStatus, setWriteNextStatus] = useState<string | null>(null);
+	const writeNextGhostRef = useRef<{ from: number; to: number } | null>(null);
+
+	const triggerWriteNext = useCallback((before: string, after: string) => {
+		const ed = editorRef.current;
+		if (ed && !ed.isDestroyed) {
+			writeNextGhostRef.current = { from: ed.state.selection.from, to: ed.state.selection.from };
+		}
+		setWriteNextError(null);
+		setWriteNextStatus(null);
+		setWriteNextBusy(true);
+		setWriteNextStreaming(false);
+		vscodeApi.postMessage({ type: 'writeNextRequest', beforeContext: before, afterContext: after, format: docFormat });
+	}, [docFormat]);
+
+	const triggerWriteNextRef = useRef(triggerWriteNext);
+	triggerWriteNextRef.current = triggerWriteNext;
+
+	const cancelWriteNext = useCallback(() => {
+		vscodeApi.postMessage({ type: 'writeNextCancel' });
+		const ed = editorRef.current;
+		const ghost = writeNextGhostRef.current;
+		if (ed && !ed.isDestroyed && ghost && ghost.to > ghost.from) {
+			const { tr } = ed.view.state;
+			tr.delete(ghost.from, ghost.to);
+			tr.setMeta('writerGhostText', null);
+			ed.view.dispatch(tr);
+		} else if (ed && !ed.isDestroyed) {
+			const { tr } = ed.view.state;
+			tr.setMeta('writerGhostText', null);
+			tr.setMeta('addToHistory', false);
+			ed.view.dispatch(tr);
+		}
+		writeNextGhostRef.current = null;
+		setWriteNextBusy(false);
+		setWriteNextStreaming(false);
+		setWriteNextStatus(null);
+	}, []);
+
+	const acceptWriteNext = useCallback(() => {
+		const ed = editorRef.current;
+		if (ed && !ed.isDestroyed) {
+			const { tr } = ed.view.state;
+			tr.setMeta('writerGhostText', null);
+			tr.setMeta('addToHistory', false);
+			ed.view.dispatch(tr);
+		}
+		writeNextGhostRef.current = null;
+		setWriteNextError(null);
+		setWriteNextStatus(null);
+		setWriteNextBusy(false);
+		setWriteNextStreaming(false);
+	}, []);
+
+	const discardWriteNext = useCallback(() => {
+		vscodeApi.postMessage({ type: 'writeNextCancel' });
+		const ed = editorRef.current;
+		const ghost = writeNextGhostRef.current;
+		if (ed && !ed.isDestroyed && ghost && ghost.to > ghost.from) {
+			const { tr } = ed.view.state;
+			tr.delete(ghost.from, ghost.to);
+			tr.setMeta('writerGhostText', null);
+			ed.view.dispatch(tr);
+		} else if (ed && !ed.isDestroyed) {
+			const { tr } = ed.view.state;
+			tr.setMeta('writerGhostText', null);
+			tr.setMeta('addToHistory', false);
+			ed.view.dispatch(tr);
+		}
+		writeNextGhostRef.current = null;
+		setWriteNextError(null);
+		setWriteNextStatus(null);
+		setWriteNextBusy(false);
+		setWriteNextStreaming(false);
+	}, []);
+
 	const [footnoteModalOpen, setFootnoteModalOpen] = useState(false);
 	const footnoteRangeRef = useRef<{ from: number; to: number } | null>(null);
 
@@ -311,6 +397,22 @@ function WriterApp() {
 			attributes: {
 				// Native Chromium spellcheck fights with Harper/LSP decorations and confuses users.
 				spellcheck: 'false',
+			},
+			handleKeyDown: (_view, event) => {
+				if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+					const ed = editorRef.current;
+					if (!ed || ed.isDestroyed || !ed.state.selection.empty) {
+						return false;
+					}
+					const ctx = extractContext(ed);
+					if (!ctx) {
+						return false;
+					}
+					event.preventDefault();
+					triggerWriteNextRef.current(ctx.before, ctx.after);
+					return true;
+				}
+				return false;
 			},
 			handleDOMEvents: {
 				mousedown: (_view, event) => {
@@ -383,6 +485,7 @@ function WriterApp() {
 			WriterCommentHighlights,
 			WriterFootnoteRef,
 			WriterFootnoteDef,
+			WriterGhostText,
 		],
 		content: '<p></p>',
 		onUpdate: () => {
@@ -740,6 +843,43 @@ function WriterApp() {
 		return () => window.removeEventListener('message', onStreamMessage);
 	}, [inlineAiOpen]);
 
+	useEffect(() => {
+		const onWriteNextMessage = (event: MessageEvent) => {
+			const msg = event.data as HostToWebview;
+			if (!msg || typeof msg !== 'object') {
+				return;
+			}
+			if (msg.type === 'writeNextDelta' && typeof msg.text === 'string') {
+				setWriteNextStatus(null);
+				setWriteNextStreaming(true);
+				const ed = editorRef.current;
+				const ghost = writeNextGhostRef.current;
+				if (ed && !ed.isDestroyed && ghost) {
+					const insertPos = ghost.to;
+					const { tr } = ed.view.state;
+					tr.insertText(msg.text, insertPos);
+					const newEnd = insertPos + msg.text.length;
+					tr.setMeta('writerGhostText', { from: ghost.from, to: newEnd } as GhostTextRange);
+					tr.setMeta('addToHistory', false);
+					ed.view.dispatch(tr);
+					writeNextGhostRef.current = { from: ghost.from, to: newEnd };
+				}
+			} else if (msg.type === 'writeNextDone') {
+				setWriteNextBusy(false);
+				setWriteNextStatus(null);
+			} else if (msg.type === 'writeNextError' && typeof msg.message === 'string') {
+				setWriteNextBusy(false);
+				setWriteNextStatus(null);
+				setWriteNextStreaming(false);
+				setWriteNextError(msg.message);
+			} else if (msg.type === 'writeNextStatus' && typeof msg.message === 'string') {
+				setWriteNextStatus(msg.message);
+			}
+		};
+		window.addEventListener('message', onWriteNextMessage);
+		return () => window.removeEventListener('message', onWriteNextMessage);
+	}, []);
+
 	const onImageFileChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
 		const file = e.target.files?.[0];
 		e.target.value = '';
@@ -773,7 +913,17 @@ function WriterApp() {
 	}
 
 	return (
-		<div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', boxSizing: 'border-box' }}>
+		<div
+			style={{
+				flex: 1,
+				display: 'flex',
+				flexDirection: 'column',
+				minHeight: 0,
+				width: '100%',
+				overflow: 'hidden',
+				boxSizing: 'border-box',
+			}}
+		>
 			<input
 				ref={imageInputRef}
 				type="file"
@@ -781,12 +931,6 @@ function WriterApp() {
 				style={{ display: 'none' }}
 				onChange={onImageFileChange}
 				aria-hidden
-			/>
-			<Toolbar
-				editor={editor}
-				format={docFormat}
-				onPickImage={() => imageInputRef.current?.click()}
-				onInsertFootnote={docFormat === 'markdown' ? openFootnoteModal : undefined}
 			/>
 			<FootnoteComposerModal
 				open={footnoteModalOpen}
@@ -798,6 +942,12 @@ function WriterApp() {
 					}
 					insertWriterFootnote(ed, { body, range: footnoteRangeRef.current ?? undefined });
 				}}
+			/>
+			<Toolbar
+				editor={editor}
+				format={docFormat}
+				onPickImage={() => imageInputRef.current?.click()}
+				onInsertFootnote={docFormat === 'markdown' ? openFootnoteModal : undefined}
 			/>
 			<div
 				className="writer-editor-scroll"
@@ -851,6 +1001,18 @@ function WriterApp() {
 					}}
 				/>
 				<FootnoteHoverPopover editor={editor} />
+				<WriteNextButton
+					editor={editor}
+					busy={writeNextBusy}
+					streaming={writeNextStreaming}
+					error={writeNextError}
+					status={writeNextStatus}
+					inlineAiBusy={inlineAiBusy}
+					onTrigger={triggerWriteNext}
+					onCancel={cancelWriteNext}
+					onAccept={acceptWriteNext}
+					onDiscard={discardWriteNext}
+				/>
 			</div>
 			<style>{WRITER_THEME_STYLES}</style>
 		</div>

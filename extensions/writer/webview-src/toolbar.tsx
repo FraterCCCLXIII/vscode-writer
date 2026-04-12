@@ -44,10 +44,9 @@ type Props = {
 	onInsertFootnote?: () => void;
 };
 
-/** Sticky chrome: no horizontal padding here so the divider can span the full webview width. */
+/** Top chrome sits above the scroll region (sibling of .writer-editor-scroll) so the vertical scrollbar does not overlap the bar. */
 const shell: CSSProperties = {
-	position: 'sticky',
-	top: 0,
+	position: 'relative',
 	zIndex: 40,
 	width: '100%',
 	flexShrink: 0,

@@ -239,4 +239,38 @@ export const WRITER_THEME_STYLES = `
 	opacity: 0;
 	pointer-events: none;
 }
+
+/* Write Next button & inline ghost text */
+.write-next-container {
+	pointer-events: none;
+}
+.write-next-btn {
+	pointer-events: auto;
+	transition: background-color 0.15s, box-shadow 0.15s;
+}
+.write-next-btn:hover {
+	background: var(--vscode-toolbar-hoverBackground) !important;
+	box-shadow: 0 4px 12px var(--vscode-widget-shadow) !important;
+}
+.write-next-actions-bar {
+	pointer-events: auto;
+}
+.write-next-action {
+	transition: background-color 0.1s;
+}
+.write-next-action:hover {
+	background: var(--vscode-toolbar-hoverBackground) !important;
+}
+.write-next-accept:hover {
+	background: var(--vscode-button-hoverBackground) !important;
+}
+.write-next-kbd {
+	font-family: inherit;
+}
+
+/* Ghost text inserted inline by Write Next */
+.ProseMirror .write-next-ghost {
+	opacity: 0.45;
+	color: var(--vscode-editor-foreground);
+}
 `;

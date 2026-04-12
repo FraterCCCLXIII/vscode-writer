@@ -141,6 +141,7 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 		};
 
 		let inlineAiCts: vscode.CancellationTokenSource | undefined;
+		let writeNextCts: vscode.CancellationTokenSource | undefined;
 		const postToWebview = (msg: ToWebview) => {
 			void webviewPanel.webview.postMessage(msg);
 		};
@@ -305,6 +306,234 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 			}
 		};
 
+		const writeNextTools: vscode.LanguageModelChatTool[] = [
+			{
+				name: 'read_file',
+				description: 'Read the contents of a file in the workspace. Use this to pull in outlines, research notes, chapter drafts, or any reference material that would help you continue writing.',
+				inputSchema: {
+					type: 'object',
+					properties: {
+						path: { type: 'string', description: 'Relative path to the file within the workspace.' },
+						maxChars: { type: 'number', description: 'Maximum characters to return. Defaults to 4000.' },
+					},
+					required: ['path'],
+				},
+			},
+			{
+				name: 'search_workspace',
+				description: 'Search across all documents in the workspace for a keyword or phrase. Returns matching snippets with filenames. Use this to find relevant passages about a topic.',
+				inputSchema: {
+					type: 'object',
+					properties: {
+						query: { type: 'string', description: 'The keyword or phrase to search for.' },
+					},
+					required: ['query'],
+				},
+			},
+		];
+
+		const gatherWorkspaceFileTree = async (): Promise<string> => {
+			const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+			if (!folder) {
+				return '(no workspace folder open)';
+			}
+			const maxFiles = 100;
+			const files = await vscode.workspace.findFiles(
+				new vscode.RelativePattern(folder, '**/*.{md,rtf,txt}'),
+				'**/node_modules/**',
+				maxFiles + 1,
+			);
+			const lines = files
+				.slice(0, maxFiles)
+				.map(f => vscode.workspace.asRelativePath(f, false))
+				.sort();
+			if (files.length > maxFiles) {
+				lines.push(`... and ${files.length - maxFiles} more files`);
+			}
+			return lines.join('\n') || '(no .md, .rtf, or .txt files found)';
+		};
+
+		const fulfillWriteNextTool = async (toolName: string, input: Record<string, unknown>): Promise<string> => {
+			const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+			if (!folder) {
+				return 'No workspace folder open.';
+			}
+			switch (toolName) {
+				case 'read_file': {
+					const relPath = String(input.path ?? '');
+					if (!relPath) {
+						return 'Error: path is required.';
+					}
+					try {
+						const fileUri = vscode.Uri.joinPath(folder.uri, relPath);
+						const doc = await vscode.workspace.openTextDocument(fileUri);
+						const text = doc.getText();
+						const max = typeof input.maxChars === 'number' ? input.maxChars : 4000;
+						return text.length > max ? text.slice(0, max) + '\n...(truncated)' : text;
+					} catch {
+						return `Error: could not read "${relPath}".`;
+					}
+				}
+				case 'search_workspace': {
+					const query = String(input.query ?? '').toLowerCase();
+					if (!query) {
+						return 'Error: query is required.';
+					}
+					const files = await vscode.workspace.findFiles(
+						new vscode.RelativePattern(folder, '**/*.{md,rtf,txt}'),
+						'**/node_modules/**',
+						50,
+					);
+					const snippets: string[] = [];
+					for (const f of files) {
+						if (snippets.length >= 5) {
+							break;
+						}
+						try {
+							const doc = await vscode.workspace.openTextDocument(f);
+							const text = doc.getText();
+							const idx = text.toLowerCase().indexOf(query);
+							if (idx >= 0) {
+								const start = Math.max(0, idx - 200);
+								const end = Math.min(text.length, idx + query.length + 200);
+								const rel = vscode.workspace.asRelativePath(f, false);
+								snippets.push(`### ${rel}\n...${text.slice(start, end)}...`);
+							}
+						} catch {
+							// skip unreadable files
+						}
+					}
+					return snippets.length > 0 ? snippets.join('\n\n') : 'No results found.';
+				}
+				default:
+					return `Unknown tool: ${toolName}`;
+			}
+		};
+
+		const MAX_TOOL_ROUNDS = 5;
+
+		const runWriteNext = async (beforeContext: string, afterContext: string, _format: 'markdown' | 'rtf') => {
+			writeNextCts?.cancel();
+			writeNextCts?.dispose();
+			writeNextCts = new vscode.CancellationTokenSource();
+			const token = writeNextCts.token;
+			try {
+				const models = await vscode.lm.selectChatModels();
+				if (token.isCancellationRequested) {
+					return;
+				}
+				if (models.length === 0) {
+					postToWebview({
+						type: 'writeNextError',
+						message: vscode.l10n.t('No language models are available. Sign in to GitHub Copilot or configure a chat model.'),
+					});
+					return;
+				}
+				const model = models[0];
+
+				postToWebview({ type: 'writeNextStatus', message: vscode.l10n.t('Preparing...') });
+				const fileTree = await gatherWorkspaceFileTree();
+				if (token.isCancellationRequested) {
+					return;
+				}
+
+				const instruction = [
+					'You are a writing assistant continuing a document. Match the existing style, tone, and formatting.',
+					'',
+					'Here are the files in this project:',
+					'---',
+					fileTree,
+					'---',
+					'',
+					'You have tools to read any of these files or search across them.',
+					'If the text references specific topics, characters, facts, or terminology, use read_file or search_workspace to look them up.',
+					'If the text is casual or self-contained and no references are needed, skip tools and write directly.',
+					'',
+					'## Current document -- before cursor:',
+					beforeContext,
+					'',
+					'## Current document -- after cursor (do not repeat):',
+					afterContext,
+					'',
+					'Write 1-3 natural paragraphs continuing from where the "before" text ends.',
+					'Reply with ONLY the new text -- no preamble, no explanation.',
+				].join('\n');
+
+				const messages: vscode.LanguageModelChatMessage[] = [
+					vscode.LanguageModelChatMessage.User(instruction),
+				];
+				const requestOptions: vscode.LanguageModelChatRequestOptions = {
+					tools: writeNextTools,
+					toolMode: vscode.LanguageModelChatToolMode.Auto,
+				};
+
+				for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+					const response = await model.sendRequest(messages, requestOptions, token);
+					if (token.isCancellationRequested) {
+						return;
+					}
+
+					const assistantParts: (vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart)[] = [];
+					let hasToolCalls = false;
+
+					for await (const chunk of response.stream) {
+						if (token.isCancellationRequested) {
+							return;
+						}
+						if (chunk instanceof vscode.LanguageModelTextPart) {
+							assistantParts.push(chunk);
+							postToWebview({ type: 'writeNextDelta', text: chunk.value });
+						} else if (chunk instanceof vscode.LanguageModelToolCallPart) {
+							hasToolCalls = true;
+							assistantParts.push(chunk);
+						}
+					}
+
+					if (!hasToolCalls) {
+						postToWebview({ type: 'writeNextDone' });
+						return;
+					}
+
+					messages.push(vscode.LanguageModelChatMessage.Assistant(assistantParts));
+
+					for (const part of assistantParts) {
+						if (!(part instanceof vscode.LanguageModelToolCallPart)) {
+							continue;
+						}
+						const toolInput = part.input as Record<string, unknown>;
+						const label = part.name === 'read_file'
+							? vscode.l10n.t('Reading {0}...', String(toolInput.path ?? ''))
+							: vscode.l10n.t('Searching for "{0}"...', String(toolInput.query ?? ''));
+						postToWebview({ type: 'writeNextStatus', message: label });
+
+						const result = await fulfillWriteNextTool(part.name, toolInput);
+						if (token.isCancellationRequested) {
+							return;
+						}
+						messages.push(
+							vscode.LanguageModelChatMessage.User([
+								new vscode.LanguageModelToolResultPart(part.callId, [
+									new vscode.LanguageModelTextPart(result),
+								]),
+							]),
+						);
+					}
+				}
+
+				postToWebview({ type: 'writeNextDone' });
+			} catch (e) {
+				if (token.isCancellationRequested) {
+					return;
+				}
+				const err = e as { name?: string; message?: string };
+				if (err?.name === 'Canceled' || err?.name === 'CancellationError') {
+					return;
+				}
+				const messageText = err?.message ?? String(e);
+				postToWebview({ type: 'writeNextError', message: messageText });
+			}
+		};
+
 		const sub = webviewPanel.webview.onDidReceiveMessage(async (message: FromWebview) => {
 			switch (message.type) {
 				case 'ready':
@@ -354,6 +583,12 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 					break;
 				case 'inlineAiCancel':
 					inlineAiCts?.cancel();
+					break;
+				case 'writeNextRequest':
+					void runWriteNext(message.beforeContext, message.afterContext, message.format);
+					break;
+				case 'writeNextCancel':
+					writeNextCts?.cancel();
 					break;
 				case 'resolveImagePaths': {
 					const map: Record<string, string> = {};
@@ -646,8 +881,34 @@ export class WriterEditorProvider implements vscode.CustomTextEditorProvider {
 	<title>Writer</title>
 	<style>
 		/* Reset VS Code-injected webview defaults (pre/index.html @layer vscode-default uses body { padding: 0 20px }). */
-		html, body, #root { height: 100%; margin: 0; padding: 0; }
-		body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-editor-foreground); background: var(--vscode-editor-background); }
+		html {
+			height: 100%;
+			margin: 0;
+			padding: 0;
+			overflow: hidden;
+		}
+		body {
+			height: 100%;
+			margin: 0;
+			padding: 0;
+			min-height: 0;
+			/* Host styles can restore overflow; keep a single scroll region in the React tree (.writer-editor-scroll). */
+			overflow: hidden !important;
+			font-family: var(--vscode-font-family);
+			font-size: var(--vscode-font-size);
+			color: var(--vscode-editor-foreground);
+			background: var(--vscode-editor-background);
+		}
+		#root {
+			height: 100%;
+			margin: 0;
+			padding: 0;
+			min-height: 0;
+			overflow: hidden;
+			display: flex;
+			flex-direction: column;
+			box-sizing: border-box;
+		}
 	</style>
 </head>
 <body>

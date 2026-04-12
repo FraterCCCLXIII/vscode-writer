@@ -31,7 +31,9 @@ export type FromWebview =
 		type: 'agentActionFailed';
 		action: 'addComment' | 'insertFootnote';
 		message: string;
-	};
+	}
+	| { type: 'writeNextRequest'; beforeContext: string; afterContext: string; format: 'markdown' | 'rtf' }
+	| { type: 'writeNextCancel' };
 
 export type ToWebview =
 	| {
@@ -82,4 +84,8 @@ export type ToWebview =
 	| { type: 'focusComment'; commentId: string; quote?: string }
 	| { type: 'clearActiveComment' }
 	| { type: 'agentAddComment'; body: string }
-	| { type: 'agentInsertFootnote'; body?: string };
+	| { type: 'agentInsertFootnote'; body?: string }
+	| { type: 'writeNextDelta'; text: string }
+	| { type: 'writeNextDone' }
+	| { type: 'writeNextError'; message: string }
+	| { type: 'writeNextStatus'; message: string };
